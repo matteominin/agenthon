@@ -37,12 +37,12 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Done when — Bypass pulito, revisione, ricontrollo dopo modifica, invio approvato, rotta simulata, cronologia admin in memoria e trace funzionano con un provider di test. Verifica finale con DeepSeek e dati sintetici.
 - Delivery notes —
 
-## T5 — Chat e revisione (UI) · TODO
+## T5 — Chat e revisione (UI) · REVIEW
 
 - Scope — `src/agenthon/ui/chat.py`, `tests/test_chat.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — L'anteprima è editabile, distingue i livelli di gravità e resta visibile accanto alle segnalazioni sulle informazioni mancanti. Le azioni suggerite compaiono solo per i dettagli ad alto impatto. Le tre azioni di revisione usano il proxy e mostrano revisione, errore o risposta in chat.
-- Delivery notes —
+- Delivery notes — `build_chat` in `src/agenthon/ui/chat.py`. Anteprima, revisioni e tre azioni verificate con fixture. Gli avvisi usano un callback provvisorio, in attesa del contratto e del proxy T4. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
 
 ## T6 — Dashboard admin (UI) · TODO
 
