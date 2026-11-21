@@ -50,6 +50,24 @@ class ChatTests(unittest.TestCase):
                     self.assertEqual(self.sent, [])
                     self.assertIn("[EMAIL_1]", result["embed"])
 
+    def test_review_lists_originals_and_renders_safe_markdown(self):
+        result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
+        card = result["embed"]
+        self.assertIn("<h3>Objective</h3>", card)
+        self.assertIn("<strong>reminder</strong>", card)
+        self.assertIn('data-label="[EMAIL_1]">jordan.miller@example.test</span>', card)
+        self.assertIn('data-label="[NAME_1]">Jordan Miller</span>', card)
+        token = next(iter(self.chat.pending))
+        ref = self.chat.pending[token][1]
+        self.assertEqual(self.proxy.review_originals(ref["request_id"], 99), {})
+        self.chat.turn(OWNER, f"{BUTTONS['approve']} [TDB:{token}]")
+        self.assertEqual(self.proxy.review_originals(**ref), {})
+        sent, route = self.sent[0]
+        self.assertEqual(route, "deepseek")
+        self.assertIn("**reminder**", sent)
+        self.assertNotIn("Jordan Miller", sent)
+        self.assertNotIn("jordan.miller@example.test", sent)
+
     def test_edit_submits_exact_draft_and_disabled_approval_is_rejected(self):
         from unittest.mock import Mock
 

@@ -16,7 +16,7 @@ DeepSeek via API gestisce sia la rotta normale sia la simulazione del modello lo
 
 ## D4 — Cronologia admin in memoria e trace a metadati
 
-Il proxy conserva mappa dei valori, testo e risposte in memoria. La mappa scade con la revisione, la cronologia admin con la sessione demo. Il trace JSONL conserva solo metadati. La vista admin della demo include il prompt originale e usa dati sintetici.
+Il proxy conserva mappa dei valori, testo e risposte in memoria. La mappa scade con la revisione, la cronologia admin con la sessione demo. La scheda del dipendente include i valori originali delle sole entità della revisione visualizzata. Open WebUI conserva la scheda nella conversazione secondo le proprie impostazioni. Il trace JSONL conserva solo metadati. La vista admin della demo include il prompt originale e usa dati sintetici.
 
 Il proxy consuma atomicamente la coppia `request_id` e `revision` prima del ricontrollo o dell’invio, così ogni revisione può produrre un solo invio.
 

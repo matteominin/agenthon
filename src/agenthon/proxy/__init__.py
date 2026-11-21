@@ -91,6 +91,15 @@ class Proxy:
         route = "local_simulated" if action == "local_simulated" else "deepseek"
         return self._send(request_id, result["proposed_prompt"], route)
 
+    def review_originals(self, request_id, revision):
+        """Values for the employee's displayed entities in this active revision."""
+        with self._lock:
+            pending = self._reviews.get(request_id)
+            if pending is None or pending[0]["revision"] != revision:
+                return {}
+            review, values = pending
+            return {e["label"]: values[e["label"]] for e in review["entities"] if e["label"] in values}
+
     def history(self):
         """Return admin entries with the most recent submissions first."""
         with self._lock:
