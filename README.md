@@ -1,14 +1,13 @@
 # agenthon
 
-## Getting started
+## Open WebUI demo
 
-Install [uv](https://docs.astral.sh/uv/), then from the project directory run:
+Employees use the TDB model in Open WebUI. The separate Gradio dashboard shows request history, risk and trace events from the same proxy.
 
-```sh
-uv sync
-uv run agenthon
-```
-
-`uv sync` creates the project environment and installs its dependencies. Add
-dependencies with `uv add <package>`; use `uv run` to run project commands in
-the environment.
+1. Export `DEEPSEEK_API_KEY` and optionally `DEEPSEEK_MODEL` in the proxy environment. From this checkout, start both the dashboard and the local transport:
+   ```sh
+   PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema --with 'spacy>=3.8,<3.9' --with 'https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl' -- python -m agenthon.ui.app
+   ```
+2. In Open WebUI, open **Admin Panel → Functions**, create a function with ID `tdb`, paste the contents of `src/agenthon/ui/openwebui_pipe.py`, save and enable it. In the model access settings, grant the intended employees read access to the TDB model. Both services in this demo share a host network namespace. The Pipe connects server-side to `http://127.0.0.1:8765`. If deployed separately, provide a private network path and configure `TDB_PROXY_URL` on the Open WebUI server.
+3. Select **TDB** in a new chat. Try a synthetic request from `data/demo/requests.json`. In the inline review, approve the displayed text, edit and recheck, or select the simulated route. Open WebUI may ask for confirmation when a review button submits its follow-up message.
+4. Open the dashboard at `http://127.0.0.1:7860`. Select a row to inspect the original and sent prompts, response and trace. The demo keeps request history in memory. Set `TDB_ADMIN_HOST` and `TDB_ADMIN_PORT` to change the admin listener.

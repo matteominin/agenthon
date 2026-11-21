@@ -22,7 +22,7 @@ Il proxy consuma atomicamente la coppia `request_id` e `revision` prima del rico
 
 ## D5 — UI riusabile
 
-Gradio Blocks è la base proposta per le viste dipendente e admin. Si riusano i componenti chat e tabella. L'approvazione resta un passaggio esplicito con le azioni nella scheda.
+Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy.
 
 ## D6 — RAG dopo il percorso P0
 

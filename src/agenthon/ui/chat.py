@@ -1,13 +1,19 @@
-"""Employee chat and explicit prompt review for the TDB demo."""
-
-from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+"""Review cards and revision-bound chat turns for the Open WebUI Pipe."""
 from html import escape
+import re
+import secrets
+from threading import Lock
 
-import gradio as gr
+from agenthon.suggestion import _SEVERITY
 
 
-REVIEW_REASONS = {
+BUTTONS = {
+    "approve": "Send redacted version",
+    "edit": "Check edited prompt",
+    "local_simulated": "Use local model (simulated with DeepSeek)",
+}
+CATEGORIES = {"name": "Name", "email": "Email", "phone": "Phone", "tax_id": "Tax ID"}
+REASONS = {
     "pii_found": "Personal information was detected.",
     "uncertain_detection": "The privacy check was inconclusive.",
     "invalid_output": "The privacy check returned an invalid result.",
@@ -15,213 +21,103 @@ REVIEW_REASONS = {
     "model_error": "The model could not answer.",
     "stale_review": "This review is out of date.",
 }
-CATEGORIES = {"name": "Name", "email": "Email", "phone": "Phone", "tax_id": "Tax ID"}
-SEVERITY_COLORS = {
-    "low": ("#15543a", "#d8f3e5"),
-    "medium": ("#674300", "#ffedc2"),
-    "high": ("#8e2430", "#fce1e4"),
-}
-ACTIONS = {
-    "remove": "Remove this detail",
-    "generalize": "Use a more general detail",
-    "add_context": "Add non-identifying context",
-}
+COMMAND = re.compile(
+    r"(" + "|".join(re.escape(label) for label in BUTTONS.values()) +
+    r") \[TDB:([A-Za-z0-9_-]{16})\](?:\n([\s\S]*)\n\[/TDB edit\])?\Z"
+)
 
 
-@dataclass(frozen=True)
-class _ChatState:
-    messages: list[dict] = field(default_factory=list)
-    review: dict | None = None
-    editing: bool = False
+def review_card(review, token):
+    proposal = review["proposed_prompt"]
+    allowed = review["allowed_actions"]
+    editable = "edit" in allowed
+    badges = []
+    severities = {s["label"]: s["severity"] for s in review["suggestions"] if "label" in s}
+    for entity in review["entities"]:
+        severity = severities.get(entity["label"], _SEVERITY[entity["type"]])
+        badges.append(
+            f'<span class="badge {severity}">{CATEGORIES[entity["type"]]} · {severity.title()} severity'
+            f' · {escape(entity["label"])}</span>'
+        )
 
+    def notes(title, items):
+        if not items:
+            return ""
+        return f"<h3>{title}</h3><ul>" + "".join(f"<li>{escape(s['message'])}</li>" for s in items) + "</ul>"
 
-def _review_details(review):
     suggestions = review["suggestions"]
-    severity_by_label = {
-        item["label"]: item["severity"] for item in suggestions if "label" in item
-    }
-    sections = []
-    if review["entities"]:
-        badges = []
-        for entity in review["entities"]:
-            category = CATEGORIES[entity["type"]]
-            label = escape(entity["label"])
-            severity = severity_by_label.get(entity["label"])
-            foreground, background = SEVERITY_COLORS.get(severity, ("#344159", "#e8edf5"))
-            text = f"{severity.capitalize()} severity" if severity else "Severity unavailable"
-            badges.append(
-                f'<li style="margin:0.35rem 0"><span style="display:inline-block;'
-                f'padding:0.2rem 0.55rem;border-radius:0.35rem;color:{foreground};'
-                f'background:{background}"><strong>{category}</strong> · {text} · '
-                f'<code>{label}</code></span></li>'
-            )
-        sections.append("<h4>Detected information</h4><ul>" + "".join(badges) + "</ul>")
+    guidance = notes("Missing information", [s for s in suggestions if "action" not in s])
+    guidance += notes("Suggested actions", [s for s in suggestions if "action" in s])
+    buttons = []
+    if proposal is not None and "approve" in allowed:
+        buttons.append('<button data-choice="approve" class="primary">Send redacted version</button>')
+    if editable:
+        buttons.append('<button id="edit"' + (' hidden' if proposal is None else '') + '>Edit</button>')
+        buttons.append('<button data-choice="edit" class="primary"' +
+                       (' hidden' if proposal is not None else '') + '>Check edited prompt</button>')
+    if proposal is not None and "local_simulated" in allowed:
+        buttons.append('<button data-choice="local_simulated">Use local model (simulated with DeepSeek)</button>')
+    return f"""<!doctype html><html lang="en"><meta charset="utf-8"><style>
+    *{{box-sizing:border-box}}body{{margin:0;font:15px/1.5 system-ui;color:#252344}}
+    article{{padding:20px;background:#fbfaff;border:1px solid #d9d5eb;border-top:4px solid #6151a4;border-radius:14px}}
+    h2,h3,p{{margin:0 0 8px}}h2{{font-size:20px}}h3,label{{font-size:14px;font-weight:700}}
+    .grid{{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:18px;margin:16px 0}}
+    textarea{{width:100%;min-height:175px;font:inherit;padding:12px;color:#252344;background:white;border:1px solid #b8b2cd;border-radius:8px}}
+    .badge,button{{display:inline-block;padding:5px 9px;border-radius:7px;margin:2px;font-size:13px}}
+    .medium{{background:#fff0c6;color:#6c4400}}.high{{background:#ffe1e1;color:#802531}}.low{{background:#d6f3e4;color:#204f36}}
+    ul{{padding-left:20px;margin:4px 0 14px}}button{{cursor:pointer;background:white;color:#342b51;border:1px solid #b8b2cd;font-weight:600}}
+    button.primary{{color:white;background:#514182}}[hidden]{{display:none!important}}
+    @media(max-width:590px){{.grid{{grid-template-columns:1fr}}}}
+    </style><article><h2>Review before sending</h2><p>{REASONS[review["reason"]]}</p>
+    {''.join(badges)}<div class="grid"><div><label for="draft">{'Prompt preview' if proposal is not None else 'Edit prompt'}</label>
+    <textarea id="draft" {'readonly' if proposal is not None else ''}>
+{escape(proposal or '')}</textarea></div>
+    <aside>{guidance}</aside></div>{''.join(buttons)}</article>
+    <script>
+    const draft=document.querySelector('#draft');
+    document.querySelector('#edit')?.addEventListener('click',()=>{{
+      draft.readOnly=false;draft.focus();document.querySelector('label').textContent='Edit prompt';
+      document.querySelectorAll('button').forEach(b=>b.hidden=b.dataset.choice!=='edit');
+    }});
+    document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{{
+      if(b.dataset.choice==='edit'&&!draft.value.trim()){{draft.focus();return}}
+      const text=b.textContent+' [TDB:{token}]'+(b.dataset.choice==='edit'?'\\n'+draft.value+'\\n[/TDB edit]':'');
+      parent.postMessage({{type:'input:prompt:submit',text}},'*');
+    }});
+    new ResizeObserver(()=>parent.postMessage({{type:'iframe:height',height:document.body.scrollHeight}},'*')).observe(document.body);
+    </script></html>"""
 
-    notices = [
-        f"<li>{escape(item['message'])}</li>" for item in suggestions if "action" not in item
-    ]
-    if notices:
-        sections.append("<h4>Missing information</h4><ul>" + "".join(notices) + "</ul>")
 
-    actions = []
-    for item in suggestions:
-        if "action" not in item:
-            continue
-        label = f" <code>{escape(item['label'])}</code>" if "label" in item else ""
-        actions.append(
-            f"<li><strong>{ACTIONS[item['action']]}</strong>{label} · {escape(item['message'])}</li>"
-        )
-    if actions:
-        sections.append("<h4>Suggested actions</h4><ul>" + "".join(actions) + "</ul>")
-    return "".join(sections)
+class Chat:
+    def __init__(self, proxy):
+        self.proxy = proxy
+        self.pending = {}
+        self.lock = Lock()
 
-
-def build_chat(
-    submit_request: Callable[[dict], dict],
-    submit_decision: Callable[[dict], dict],
-) -> None:
-    """Add the employee view to the active Blocks context.
-
-    The first two callbacks consume proxy.json request and decision objects and
-    return validated result objects. Review items with an action are the
-    targeted suggestions selected by the proxy for high-impact details.
-    """
-    state = gr.State(_ChatState())
-    # Carry the displayed revision in each browser event, alongside server-side state.
-    shown_review = gr.JSON(visible=False)
-    chat = gr.Chatbot(
-        label="Employee chat",
-        placeholder="Ask the model a question.",
-        render_markdown=False,
-        allow_tags=False,
-        feedback_options=None,
-    )
-    with gr.Row() as composer:
-        prompt = gr.Textbox(label="Your prompt", lines=2, scale=5)
-        send = gr.Button("Send", variant="primary", scale=1)
-    status = gr.Markdown(visible=False)
-
-    with gr.Group(visible=False) as review_panel:
-        review_reason = gr.Markdown()
-        with gr.Row():
-            preview = gr.Textbox(label="Prompt preview", lines=7, interactive=False, scale=3)
-            details = gr.HTML(js_on_load=None, scale=2)
-        with gr.Row():
-            approve = gr.Button("Send redacted version", variant="primary")
-            edit = gr.Button("Edit")
-            local = gr.Button("Use local model (simulated with DeepSeek)")
-            recheck = gr.Button("Check and send edited prompt", variant="primary", visible=False)
-            cancel = gr.Button("Cancel edit", visible=False)
-
-    outputs = [
-        state, shown_review, chat, composer, prompt, status, review_panel,
-        review_reason, preview, details, approve, edit, local, recheck, cancel,
-    ]
-
-    def render(current, *, prompt_text="", draft=None, message=""):
-        review = current.review
-        reference = None
-        proposal = None
-        allowed = []
-        if review is not None:
-            reference = {"request_id": review["request_id"], "revision": review["revision"]}
-            proposal = review["proposed_prompt"]
-            allowed = review["allowed_actions"]
-        editing = current.editing
-        return (
-            current,
-            reference,
-            current.messages,
-            gr.update(visible=review is None),
-            prompt_text,
-            gr.update(value=message, visible=bool(message)),
-            gr.update(visible=review is not None),
-            "### Review required\n" + REVIEW_REASONS[review["reason"]] if review else "",
-            gr.update(
-                value=(proposal or "") if draft is None else draft,
-                label="Edit prompt" if editing else "Prompt preview",
-                visible=proposal is not None or editing,
-                interactive=editing,
-            ),
-            _review_details(review) if review else "",
-            gr.update(visible=proposal is not None and not editing and "approve" in allowed),
-            gr.update(visible=not editing and "edit" in allowed),
-            gr.update(visible=proposal is not None and not editing and "local_simulated" in allowed),
-            gr.update(visible=editing),
-            gr.update(visible=editing and proposal is not None),
-        )
-
-    def receive(result, messages):
-        if result["status"] == "review_required":
-            return render(_ChatState(messages, result, result["proposed_prompt"] is None))
+    def turn(self, owner, text):
+        command = COMMAND.fullmatch(text)
+        if command:
+            label, token, draft = command.groups()
+            action = next(key for key, value in BUTTONS.items() if value == label)
+            with self.lock:
+                pending = self.pending.get(token)
+                if not pending or pending[0] != owner or action not in pending[2]:
+                    return {"message": REASONS["stale_review"]}
+                if action == "edit" and not (draft or "").strip():
+                    return {"message": "Enter an edited prompt."}
+                del self.pending[token]
+            decision = {**pending[1], "action": action}
+            if action == "edit":
+                decision["prompt"] = draft
+            result = self.proxy.decide(decision)
+        else:
+            result = self.proxy.submit({"prompt": text})
         if result["status"] == "completed":
-            answer = {"role": "assistant", "content": result["answer"]}
-            return render(_ChatState([*messages, answer]))
-        return render(_ChatState(messages), message=f"Request failed. {REVIEW_REASONS[result['reason']]}")
-
-    def send_prompt(text, current):
-        if current.review is not None:
-            return (gr.skip(),) * len(outputs)
-        if not text.strip():
-            return render(current, prompt_text=text, message="Enter a prompt to continue.")
-        try:
-            result = submit_request({"prompt": text})
-        except TimeoutError:
-            return render(current, prompt_text=text, message="The proxy timed out.")
-        messages = [*current.messages, {"role": "user", "content": text}]
-        return receive(result, messages)
-
-    def is_displayed_review(current, reference):
-        review = current.review
-        return review is not None and reference == {
-            "request_id": review["request_id"], "revision": review["revision"],
-        }
-
-    def open_editor(current, reference):
-        if not is_displayed_review(current, reference) or current.editing:
-            return (gr.skip(),) * len(outputs)
-        if "edit" in current.review["allowed_actions"]:
-            return render(replace(current, editing=True))
-        return (gr.skip(),) * len(outputs)
-
-    def cancel_edit(current, reference):
-        if not is_displayed_review(current, reference) or not current.editing:
-            return (gr.skip(),) * len(outputs)
-        if current.review["proposed_prompt"] is not None:
-            return render(replace(current, editing=False))
-        return (gr.skip(),) * len(outputs)
-
-    def decide(action, current, reference, draft=None):
-        if not is_displayed_review(current, reference):
-            return (gr.skip(),) * len(outputs)
-        if action not in current.review["allowed_actions"] or current.editing != (action == "edit"):
-            return (gr.skip(),) * len(outputs)
-        payload = {**reference, "action": action}
-        if action == "edit":
-            if not draft or not draft.strip():
-                return render(current, draft=draft, message="Enter an edited prompt to continue.")
-            payload["prompt"] = draft
-        elif current.review["proposed_prompt"] is None:
-            return (gr.skip(),) * len(outputs)
-        try:
-            result = submit_decision(payload)
-        except TimeoutError:
-            return render(current, draft=draft, message="The proxy timed out.")
-        return receive(result, current.messages)
-
-    event_options = {
-        "outputs": outputs,
-        "api_visibility": "private",
-        "concurrency_id": f"chat-{chat._id}",
-    }
-    review_inputs = [state, shown_review]
-    gr.on([send.click, prompt.submit], send_prompt, [prompt, state], **event_options)
-    edit.click(open_editor, review_inputs, **event_options)
-    cancel.click(cancel_edit, review_inputs, **event_options)
-    approve.click(lambda current, reference: decide("approve", current, reference), review_inputs, **event_options)
-    local.click(lambda current, reference: decide("local_simulated", current, reference), review_inputs, **event_options)
-    recheck.click(
-        lambda current, reference, draft: decide("edit", current, reference, draft),
-        [*review_inputs, preview],
-        **event_options,
-    )
+            return {"message": result["answer"]}
+        if result["status"] == "failed":
+            return {"message": "Request failed. " + REASONS[result["reason"]]}
+        token = secrets.token_urlsafe(12)
+        ref = {"request_id": result["request_id"], "revision": result["revision"]}
+        with self.lock:
+            self.pending[token] = (owner, ref, result["allowed_actions"])
+        return {"message": "Review required before sending.", "embed": review_card(result, token)}

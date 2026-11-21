@@ -37,7 +37,7 @@ La demo si svolge interamente in inglese. Questo vale per prompt ed esempi, ante
 
 - **Dipendente.** Chat principale e scheda di revisione inline con anteprima esatta del testo da inviare. Le etichette mostrano categoria e gravità in testo e colore. Accanto all'anteprima, la scheda indica quali informazioni mancano e come la loro assenza limita la risposta. Mostra un'azione solo dove il contesto aggiuntivo può migliorare sensibilmente il risultato. La proposta resta disponibile anche quando alcuni dati mancano. Il testo da approvare si può modificare nella stessa scheda.
 - **Admin.** Tabella di tutte le richieste, ordinate dalla più recente, con colonne per orario, ID, stato, rotta e flag **PII Risk**. La riga apre prompt originale, prompt inviato, risposta del modello e trace. Le richieste in attesa o fallite mostrano lo stato anche quando la risposta manca. I filtri per rischio, gravità e stato sono P1.
-- **Base UI.** Riutilizzare i componenti Python di Gradio Blocks per chat, scheda di revisione e tabella. La demo espone le due viste come sezioni distinte. [Gradio Blocks](https://gradio.app/docs/gradio/blocks) · [Gradio Dataframe](https://gradio.app/docs/gradio/dataframe)
+- **Base UI.** Il dipendente usa la chat nativa di Open WebUI e il modello TDB. Una Pipe mostra la revisione nella conversazione. La dashboard amministrativa ha una UI separata in Gradio Blocks e legge lo stesso proxy. [Gradio Blocks](https://gradio.app/docs/gradio/blocks) · [Gradio Dataframe](https://gradio.app/docs/gradio/dataframe)
 
 ## Priorità
 

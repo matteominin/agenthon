@@ -41,17 +41,17 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 ## T5 — Chat e revisione (UI) · DONE
 
-- Scope — `src/agenthon/ui/chat.py`, `tests/test_chat.py`.
+- Scope — `src/agenthon/ui/chat.py`, `src/agenthon/ui/openwebui_pipe.py`, `tests/test_chat.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — L'anteprima è editabile, distingue i livelli di gravità e resta visibile accanto alle segnalazioni sulle informazioni mancanti. Le azioni suggerite compaiono solo per i dettagli ad alto impatto. Le tre azioni di revisione usano il proxy e mostrano revisione, errore o risposta in chat.
-- Delivery notes — `build_chat` in `src/agenthon/ui/chat.py`. I quattro casi demo sono stati riprodotti dalla chat con il proxy T4, spaCy e un provider di test, inclusa la nuova revisione dopo la reintroduzione di PII. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
+- Delivery notes — Pipe Open WebUI in `src/agenthon/ui/openwebui_pipe.py` e scheda di revisione in `src/agenthon/ui/chat.py`. I quattro casi demo sono stati riprodotti dalla chat con il proxy T4, spaCy e un provider di test, inclusa la nuova revisione dopo la reintroduzione di PII. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
 
 ## T6 — Dashboard admin (UI) · DONE
 
 - Scope — `src/agenthon/ui/admin.py`, `tests/test_admin.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — Tutte le richieste compaiono subito. Il dettaglio mostra prompt originale, prompt inviato e risposta quando disponibili. Il flag si attiva al primo rilevamento PII e resta visibile dopo l'esecuzione.
-- Delivery notes — `build_admin` in `src/agenthon/ui/admin.py`. La dashboard legge cronologia e trace da `Proxy.history` e `Proxy.trace_events`. Verificati selezione, prompt inviato, risposta e persistenza del flag PII dopo la rotta simulata. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_admin.py`.
+- Delivery notes — `build_admin` in `src/agenthon/ui/admin.py`. Filtri rischio, gravità e stato. La dashboard legge cronologia e trace da `Proxy.history` e `Proxy.trace_events`. Verificati selezione, prompt inviato, risposta e persistenza del flag PII dopo la rotta simulata. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_admin.py`.
 
 ## T7 — Entrypoint e prova demo (UI + Core) · TODO
 
