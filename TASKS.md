@@ -64,7 +64,8 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 ## T8 — Revisione fedele al prompt · DONE
 
-- Scope — `src/agenthon/{pii,rephrase,models,proxy}/`, `src/agenthon/ui/chat.py`, `tests/test_{pii,rephrase,proxy,chat}.py`, `SPEC.md`.
+- Scope — `src/agenthon/{pii,rephrase,models,proxy}/`, `src/agenthon/ui/chat.py`, `tests/test_{pii,rephrase,proxy,chat}.py`, `data/demo/review-cases.json`, `SPEC.md`.
 - Done when — L'apertura italiana «Se ho» resta intatta e il testo proposto conserva lingua e contenuto attorno ai segnaposto.
 - Delivery notes — Corretto il falso positivo di spaCy e mantenuto il testo oscurato esatto nella proposta. Rephrase e Suggestion alimentano gli avvisi.
+  Gli otto casi in `data/demo/review-cases.json` includono prompt, anteprime attese e verifiche per la UI.
   Con le dipendenze demo, eseguire `PYTHONPATH=src:tests python -m unittest test_pii test_rephrase test_proxy test_chat`.

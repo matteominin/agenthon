@@ -1,0 +1,60 @@
+[
+  {
+    "id": "italian-arithmetic",
+    "prompt": "Se ho 5 biscotti e ne regalo 2, quanti biscotti mi rimangono?",
+    "expected_status": "completed",
+    "ui_check": "No review card. The answer should give 3."
+  },
+  {
+    "id": "italian-arithmetic-with-name",
+    "prompt": "Se ho due biscotti e Maya Brooks ne mangia uno, quanti biscotti mi rimangono?",
+    "expected_status": "review_required",
+    "expected_preview": "Se ho due biscotti e [NAME_1] ne mangia uno, quanti biscotti mi rimangono?",
+    "ui_check": "Only the name is masked. There is no action and no warning about missing quantities or a salutation. Approve and check that the answer gives 1."
+  },
+  {
+    "id": "email-with-complete-context",
+    "prompt": "Draft a short email to team.lead@example.test asking for the report by Friday.",
+    "expected_status": "review_required",
+    "expected_preview": "Draft a short email to [EMAIL_1] asking for the report by Friday.",
+    "ui_check": "The address is masked. The draft can be written without it, so there is no suggested action."
+  },
+  {
+    "id": "phone-with-complete-context",
+    "prompt": "Draft a text to +1-202-555-0142 asking to confirm delivery at 14:30.",
+    "expected_status": "review_required",
+    "expected_preview": "Draft a text to [PHONE_1] asking to confirm delivery at 14:30.",
+    "ui_check": "Only the number is masked. The time is still present and there is no suggested action."
+  },
+  {
+    "id": "staffing-with-missing-context",
+    "prompt": "Build a work shift schedule for Maya Brooks and Alex Carter for Tuesday.",
+    "expected_status": "review_required",
+    "expected_preview": "Build a work shift schedule for [NAME_1] and [NAME_2] for Tuesday.",
+    "expected_action_topics": ["availability", "skills"],
+    "ui_check": "Useful actions ask for availability windows and skills using roles or placeholders. They do not ask for names or repeat the day."
+  },
+  {
+    "id": "staffing-with-complete-context",
+    "prompt": "Build a work shift schedule for Maya Brooks on Tuesday. She can work Tuesday from 09:00 to 17:00 and is trained in first aid. Assign her to first-aid coverage during that window.",
+    "expected_status": "review_required",
+    "expected_preview": "Build a work shift schedule for [NAME_1] on Tuesday. She can work Tuesday from 09:00 to 17:00 and is trained in first aid. Assign her to first-aid coverage during that window.",
+    "ui_check": "No action asks again for availability or qualifications. The name is irrelevant to the assignment."
+  },
+  {
+    "id": "payroll-tax-id",
+    "prompt": "Explain how to verify a payroll record using SSN: 321765432.",
+    "expected_status": "review_required",
+    "expected_preview": "Explain how to verify a payroll record using SSN: [SSN_1].",
+    "ui_check": "The identifier is marked high severity. The notice explains that an exact identity match needs the original data. No action asks for that data."
+  },
+  {
+    "id": "new-sensitive-data-in-edit",
+    "prompt": "Draft a short email to team.lead@example.test asking for the report by Friday.",
+    "expected_status": "review_required",
+    "expected_preview": "Draft a short email to [EMAIL_1] asking for the report by Friday.",
+    "edited_prompt": "Draft a short email to [EMAIL_1] and cc audit.lead@example.test asking for the report by Friday.",
+    "expected_edited_preview": "Draft a short email to [EMAIL_1] and cc [EMAIL_2] asking for the report by Friday.",
+    "ui_check": "Use Edit, paste edited_prompt and click Check edited prompt. A fresh review appears before sending and both addresses are masked."
+  }
+]

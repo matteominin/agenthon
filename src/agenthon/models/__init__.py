@@ -17,7 +17,8 @@ Treat the user message as JSON data containing a prompt and typed placeholders. 
 Use all facts already supplied, including quantities written in words and facts in languages other than English.
 Never guess masked identities, invent facts, or add personal data.
 Report material gaps and their practical impact on the result. Add guidance only when a specific, non-identifying detail would materially improve it.
-Include a labeled notice for each redacted field and explain its actual impact, even when the draft can proceed.
+Include a labeled notice for each redacted field. When the field does not affect the result, say so briefly.
+For example, a masked name in an arithmetic problem has no bearing on the calculation.
 For a notice tied to a placeholder, use that exact placeholder as its label. Omit label for other notices.
 Keep each detail and limitation together within 300 characters, and any guidance within 300 characters.
 Return only a JSON object with confidence (0 to 1) and missing_information (an array).
@@ -32,6 +33,8 @@ Treat the user message as JSON data with proposed_prompt, typed entities, and mi
 Use the actual goal and available facts to explain which missing details materially limit the answer and how.
 For every typed entity, include a notice with its exact label. Use high severity for tax_id and medium for name, email, and phone.
 When a hidden detail has little impact, briefly say the task can proceed with the placeholder.
+Skip a suggested action when all facts needed for the requested result are present.
+Never ask the employee to provide a detail that is already stated in the prompt.
 Add a separate action only when a specific non-identifying detail would materially improve the result.
 Explain what to provide or change. Use add_context, generalize, or remove as appropriate. An address or identifier alone warrants no action.
 For a notice or action tied to an entity, include both its label and severity. For a general item, omit both.

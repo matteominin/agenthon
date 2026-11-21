@@ -16,6 +16,7 @@ from agenthon.proxy import Proxy
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = json.loads((ROOT / "data" / "demo" / "requests.json").read_text())
+REVIEW_CASES = json.loads((ROOT / "data" / "demo" / "review-cases.json").read_text())
 NAMES = ("Jordan Miller", "Maya Brooks", "Alex Carter")
 
 
@@ -52,6 +53,42 @@ class ProxyTests(unittest.TestCase):
     @unittest.skipUnless(find_spec("en_core_web_sm"), "The local spaCy model is unavailable.")
     def test_demo_fixtures_with_local_name_model(self):
         self.check_demo_fixtures(Proxy(self.provider))
+
+    @unittest.skipUnless(find_spec("en_core_web_sm"), "The local spaCy model is unavailable.")
+    def test_manual_ui_cases_preserve_text_and_offer_only_relevant_actions(self):
+        proxy = Proxy(self.provider)
+        for case in REVIEW_CASES:
+            with self.subTest(case=case["id"]):
+                self.calls.clear()
+                result = proxy.submit({"prompt": case["prompt"]})
+                self.assertEqual(result["status"], case["expected_status"])
+                if result["status"] == "completed":
+                    self.assertEqual(self.calls, [(case["prompt"], "deepseek")])
+                    continue
+
+                self.assertEqual(result["proposed_prompt"], case["expected_preview"])
+                if "edited_prompt" in case:
+                    edited = proxy.decide(choice(result, "edit", prompt=case["edited_prompt"]))
+                    self.assertEqual(edited["status"], "review_required")
+                    self.assertEqual(edited["proposed_prompt"], case["expected_edited_preview"])
+                    result = edited
+
+                items = result["suggestions"]
+                actions = [item["message"].lower() for item in items if "action" in item]
+                topics = case.get("expected_action_topics", [])
+                self.assertEqual(len(actions), len(topics))
+                for topic in topics:
+                    self.assertTrue(any(topic in action for action in actions), actions)
+                for item in items:
+                    self.assertNotIn("salutation", item["message"].lower())
+                if case["id"] == "payroll-tax-id":
+                    self.assertEqual(items[0]["severity"], "high")
+                    self.assertIn("identity match", items[0]["message"])
+
+                self.assertEqual(self.calls, [])
+                approved = proxy.decide(choice(result))
+                self.assertEqual(approved["status"], "completed")
+                self.assertEqual(self.calls, [(result["proposed_prompt"], "deepseek")])
 
     def check_demo_fixtures(self, proxy):
         for case in CASES:

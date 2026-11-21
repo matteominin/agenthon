@@ -28,10 +28,10 @@ _SKILLS = re.compile(
 _CONTACT_LIMITATIONS = {
     "name": (
         "A person's name is hidden.",
-        "A draft can be prepared, but the exact name is unavailable for a personal salutation.",
+        "Refer to this person by the placeholder if needed.",
     ),
-    "email": ("An email address is hidden.", "A draft can be prepared, but the exact address is unavailable."),
-    "phone": ("A phone number is hidden.", "A draft can be prepared, but the exact number is unavailable."),
+    "email": ("An email address is hidden.", "Use the placeholder wherever the address is needed."),
+    "phone": ("A phone number is hidden.", "Use the placeholder wherever the number is needed."),
     "tax_id": (
         "A taxpayer identifier is hidden.",
         "Any step requiring an exact identity match remains conditional.",
