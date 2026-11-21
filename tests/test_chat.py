@@ -50,6 +50,30 @@ class ChatTests(unittest.TestCase):
                     self.assertEqual(self.sent, [])
                     self.assertIn("[EMAIL_1]", result["embed"])
 
+    def test_new_email_in_edited_prompt_requires_a_new_review(self):
+        self.chat.turn(OWNER, CASES[2]["prompt"])
+        token, = self.chat.pending
+        new_email = "rollout.lead@example.test"
+        draft = f"Draft a rollout reminder for [EMAIL_1] and {new_email}."
+        choice = f"{BUTTONS['edit']} [TDB:{token}]\n{draft}\n[/TDB edit]"
+
+        result = self.chat.turn(OWNER, choice)
+        self.assertIn("detected in the edited prompt", result["message"])
+        self.assertIn("[EMAIL_2]", result["embed"])
+        self.assertEqual(self.sent, [])
+        self.assertIsNone(self.proxy.history()[0]["sent_prompt"])
+        self.assertIn("out of date", self.chat.turn(OWNER, f"{BUTTONS['approve']} [TDB:{token}]")["message"])
+
+        new_token, = self.chat.pending
+        self.assertEqual(
+            self.chat.turn(OWNER, f"{BUTTONS['approve']} [TDB:{new_token}]"),
+            {"message": "Demo response"},
+        )
+        sent, route = self.sent[0]
+        self.assertEqual(route, "deepseek")
+        self.assertIn("[EMAIL_2]", sent)
+        self.assertNotIn(new_email, sent)
+
     def test_review_lists_originals_and_renders_safe_markdown(self):
         result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
         card = result["embed"]

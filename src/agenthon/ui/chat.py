@@ -149,6 +149,7 @@ class Chat:
 
     def turn(self, owner, text):
         command = COMMAND.fullmatch(text)
+        action = None
         if command:
             label, token, draft = command.groups()
             action = next(key for key, value in BUTTONS.items() if value == label)
@@ -174,4 +175,7 @@ class Chat:
         with self.lock:
             self.pending[token] = (owner, ref, result["allowed_actions"])
         originals = self.proxy.review_originals(**ref) if result["entities"] else {}
-        return {"message": "Review required before sending.", "embed": review_card(result, token, originals)}
+        message = "Review required before sending."
+        if action == "edit" and result["reason"] == "pii_found":
+            message = "Personal information was detected in the edited prompt. Review the updated version before sending."
+        return {"message": message, "embed": review_card(result, token, originals)}
