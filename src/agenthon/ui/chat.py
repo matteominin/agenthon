@@ -172,10 +172,14 @@ def review_card(review, token, originals=None):
         hidden = " hidden" if editing and has_preview else ""
         if editing and has_preview:
             actions.append('<button id="cancel" data-mode="edit" hidden>Cancel changes</button>')
-        actions.append(
+        button = (
             f'<button data-choice="{action}" data-command="{BUTTONS[action]}" data-mode="{mode}" '
             f'class="{"" if action == "local_simulated" else "primary"}"{hidden}>{BUTTONS[action]}</button>'
         )
+        if action == "approve":
+            button = ('<div class="approval-action"><span id="approval-status" class="muted" role="status"></span>'
+                      + button + '</div>')
+        actions.append(button)
     return REVIEW_TEMPLATE.substitute(
         token=token, reason=REASONS[review["reason"]],
         badges='<div class="badges">' + "".join(badges) + '</div>' if badges else "",

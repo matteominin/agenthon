@@ -22,10 +22,13 @@ button.mask[aria-pressed=true]{background:var(--wash);color:var(--ink)}
 textarea{width:100%;resize:vertical;min-height:230px;max-height:65vh;font:inherit;line-height:1.65;border-radius:10px;border:1px solid var(--accent);color:var(--ink);padding:14px;background:var(--paper)}
 .hint{margin-top:8px}.guidance{margin-top:18px;border-top:1px solid var(--line);padding-top:10px}.guidance:empty{display:none}
 summary{font-weight:650;cursor:pointer;padding:4px 0}details ul{padding-left:22px;font-size:14px}details+details{margin-top:6px}
-footer{border-top:1px solid var(--line);justify-content:flex-end;flex-wrap:wrap;background:var(--wash)}
+footer{border-top:1px solid var(--line);align-items:flex-end;justify-content:flex-end;flex-wrap:wrap;background:var(--wash)}
+.approval-action{display:grid;gap:4px}
+.approval-action:has(button[hidden]){display:none}
+#approval-status{contain:inline-size;text-align:center;overflow-wrap:anywhere}
 #approval-status:empty{display:none}
 footer [data-choice=local_simulated]{margin-right:auto}.muted{color:var(--quiet);font-size:12px}
-[hidden]{display:none!important}@media(max-width:470px){footer{align-items:stretch}footer button{flex:1 1 auto}footer [data-choice=local_simulated]{flex-basis:100%}}
+[hidden]{display:none!important}@media(max-width:470px){footer{align-items:stretch}footer button,footer .approval-action{flex:1 1 auto}footer [data-choice=local_simulated]{flex-basis:100%}}
 @media(min-width:660px){
  .content:has(.guidance:not(:empty)):has(#draft[hidden]){display:grid;grid-template-columns:minmax(0,1.8fr) minmax(170px,1fr);gap:22px}
  .content:has(#draft[hidden]) .guidance{margin:0;padding:0 0 0 16px;border-top:0;border-left:1px solid var(--line)}
@@ -42,7 +45,7 @@ $draft</textarea>
 <div id="edit-help" class="hint" $edit_hidden>Personal information is checked again before sending.</div>
 </div><div class="guidance">$guidance</div>
 </section>
-<footer><span id="approval-status" class="muted" role="status"></span>$actions</footer></article>
+<footer>$actions</footer></article>
 <script>
 const el=id=>document.getElementById(id);
 const draft=el('draft'), preview=el('preview'), token=document.querySelector('article').dataset.reference;
