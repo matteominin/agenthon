@@ -10,7 +10,9 @@ RESPONSE_SYSTEM_PROMPT = (
     "Use concise, concrete language and include only details needed for accuracy or action. "
     "Match the depth and format to the request. When a missing fact materially affects the answer, "
     "state the necessary assumption or give conditional guidance. "
-    "Preserve redaction placeholders where relevant and never infer their values."
+    "Preserve the exact spelling of relevant redaction placeholders and never infer their values. "
+    "When drafting a message for an explicitly specified recipient placeholder, put it in a separate To line. "
+    "Avoid adding a sender name or placeholder unless it is needed or requested."
 )
 
 REPHRASE_SYSTEM_PROMPT = """Identify missing information in an already redacted employee request.

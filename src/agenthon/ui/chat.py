@@ -37,6 +37,49 @@ COMMAND = re.compile(
 )
 
 
+# Open WebUI uses the submitted text as the confirmation label too.
+# A Unicode tag suffix carries the revision token without a visible label.
+TAG_OFFSET = 0xE0000
+TAGGED_COMMAND = re.compile(
+    r"(" + "|".join(re.escape(label) for label in BUTTONS.values()) +
+    r")(?:\n\n([\s\S]*))?\U000e0001([\U000e0020-\U000e007e]{16})\U000e007f\Z"
+)
+REDACTED_LABEL = re.compile(r"\[(?:NAME|EMAIL|PHONE|SSN)_[1-9][0-9]*\]")
+
+
+def _parse_command(text):
+    tagged = TAGGED_COMMAND.fullmatch(text)
+    if tagged:
+        label, draft, tags = tagged.groups()
+        token = "".join(chr(ord(char) - TAG_OFFSET) for char in tags)
+        return label, draft, token
+    command = COMMAND.fullmatch(text)
+    if command:
+        return command.groups()
+    legacy = LEGACY_COMMAND.fullmatch(text)
+    if legacy:
+        label, token, draft = legacy.groups()
+        return label, draft, token
+    return None
+
+
+def _restore_answer(answer, sent_prompt, originals):
+    used = set(REDACTED_LABEL.findall(sent_prompt))
+
+    def restore(match):
+        label = match[0]
+        return originals.get(label, label) if label in used else label
+
+    restored = REDACTED_LABEL.sub(restore, answer)
+    if restored == answer:
+        return answer
+
+    # Render restored data as literal text so values cannot become URLs or
+    # image sources even when the model puts a placeholder inside Markdown.
+    fence = "~" * max(3, 1 + max(map(len, re.findall(r"~+", restored)), default=0))
+    return f"{fence}text\n{restored}\n{fence}"
+
+
 # Render user-authored Markdown as local text, including URLs and image syntax.
 MARKDOWN = MarkdownIt("commonmark", {"html": False, "breaks": True}).disable(
     ["image", "link", "autolink", "reference"]
@@ -103,14 +146,12 @@ class Chat:
         self.lock = Lock()
 
     def turn(self, owner, text):
-        command = COMMAND.fullmatch(text)
+        command = _parse_command(text)
         action = None
-        legacy = LEGACY_COMMAND.fullmatch(text) if command is None else None
-        if command or legacy:
-            if command:
-                label, draft, token = command.groups()
-            else:
-                label, token, draft = legacy.groups()
+        originals = {}
+        sent_prompt = ""
+        if command:
+            label, draft, token = command
             action = next(key for key, value in BUTTONS.items() if value == label)
             with self.lock:
                 pending = self.pending.get(token)
@@ -122,17 +163,19 @@ class Chat:
             decision = {**pending[1], "action": action}
             if action == "edit":
                 decision["prompt"] = draft
+            sent_prompt = draft if action == "edit" else pending[3]
+            originals = self.proxy.review_originals(**pending[1], include_previous=True)
             result = self.proxy.decide(decision)
         else:
             result = self.proxy.submit({"prompt": text})
         if result["status"] == "completed":
-            return {"message": result["answer"]}
+            return {"message": _restore_answer(result["answer"], sent_prompt, originals)}
         if result["status"] == "failed":
             return {"message": "Request failed. " + REASONS[result["reason"]]}
         token = secrets.token_urlsafe(12)
         ref = {"request_id": result["request_id"], "revision": result["revision"]}
         with self.lock:
-            self.pending[token] = (owner, ref, result["allowed_actions"])
+            self.pending[token] = (owner, ref, result["allowed_actions"], result["proposed_prompt"])
         originals = self.proxy.review_originals(**ref) if result["entities"] else {}
         message = "Review required before sending."
         if action == "edit" and result["reason"] == "pii_found":

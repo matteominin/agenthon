@@ -15,6 +15,11 @@ CASES = json.loads((ROOT / "data/demo/requests.json").read_text())
 OWNER = ("employee", "chat-1")
 
 
+def tagged_choice(action, token, draft=None):
+    text = BUTTONS[action] if draft is None else f"{BUTTONS[action]}\n\n{draft}"
+    return text + "\U000e0001" + "".join(chr(0xE0000 + ord(char)) for char in token) + "\U000e007f"
+
+
 class ChatTests(unittest.TestCase):
     def setUp(self):
         self.sent = []
@@ -74,6 +79,49 @@ class ChatTests(unittest.TestCase):
         self.assertIn("[EMAIL_2]", sent)
         self.assertNotIn(new_email, sent)
 
+    def test_chat_restores_only_placeholders_kept_in_the_edited_prompt(self):
+        phone = "+1-202-555-0142"
+        email = "jordan.miller@example.test"
+        answer = "To: [PHONE_1]\nConfirm delivery at 14:30. [EMAIL_1] [NAME]"
+
+        def provider(prompt, route):
+            self.sent.append((prompt, route))
+            return answer
+
+        proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
+        chat = Chat(proxy)
+        chat.turn(OWNER, f"Draft a text to {phone} and an email to {email} asking to confirm delivery at 14:30.")
+        token, = chat.pending
+        draft = "Draft a text to [PHONE_1] asking to confirm delivery at 14:30."
+        command = tagged_choice("edit", token, draft)
+        self.assertIn("out of date", chat.turn(("other", OWNER[1]), command)["message"])
+        result = chat.turn(OWNER, command)
+
+        self.assertIn(f"To: {phone}", result["message"])
+        self.assertIn("[EMAIL_1] [NAME]", result["message"])
+        self.assertNotIn(email, result["message"])
+        self.assertEqual(self.sent, [(draft, "deepseek")])
+        self.assertEqual(proxy.history()[0]["response"], answer)
+        self.assertNotIn(phone, json.dumps(proxy.trace_events()))
+        self.assertIn("out of date", chat.turn(OWNER, command)["message"])
+
+    def test_approval_restores_values_from_the_previous_and_current_revision(self):
+        phone = "+1-202-555-0142"
+        email = "jordan.miller@example.test"
+        proxy = Proxy(lambda prompt, route: "To [PHONE_1] and [EMAIL_1]",
+                      detector=PIIDetector(find_names=find_names))
+        chat = Chat(proxy)
+        chat.turn(OWNER, f"Draft a text to {phone}.")
+        token, = chat.pending
+        approval = tagged_choice("edit", token, f"Draft a text to [PHONE_1] and an email to {email}.")
+        updated = chat.turn(OWNER, approval)
+        self.assertIn("detected in the edited prompt", updated["message"])
+        new_token, = chat.pending
+        answer = chat.turn(OWNER, tagged_choice("approve", new_token))["message"]
+
+        self.assertIn(f"To {phone} and {email}", answer)
+        self.assertEqual(proxy.history()[0]["sent_prompt"], "Draft a text to [PHONE_1] and an email to [EMAIL_1].")
+
     def test_review_lists_originals_and_renders_safe_markdown(self):
         result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
         card = result["embed"]
@@ -108,7 +156,7 @@ class ChatTests(unittest.TestCase):
         token = re.search(r'data-reference="([A-Za-z0-9_-]{16})"', review["embed"])[1]
         self.assertIn("out of date", chat.turn(OWNER, f"{BUTTONS['approve']} [TDB:{token}]")["message"])
         draft = "  Ask for a delivery estimate.\n"
-        result = chat.turn(OWNER, f"{BUTTONS['edit']}\n\n{draft}\n\nReview reference: {token}")
+        result = chat.turn(OWNER, tagged_choice("edit", token, draft))
         proxy.decide.assert_called_once_with({
             "request_id": "demo-edit", "revision": 4, "action": "edit", "prompt": draft,
         })

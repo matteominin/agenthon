@@ -82,7 +82,9 @@ el('edit')?.addEventListener('click',()=>editing(true));
 el('cancel')?.addEventListener('click',()=>editing(false));
 document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{
  if(b.dataset.choice==='edit'&&!draft.value.trim()){draft.focus();draft.setCustomValidity('Enter a prompt to continue.');draft.reportValidity();return}
- const text=b.dataset.command+(b.dataset.choice==='edit'?'\n\n'+draft.value:'')+'\n\nReview reference: '+token;
+ // Open WebUI displays the submitted text in its confirmation dialog.
+ const tag=String.fromCodePoint(0xe0001,...Array.from(token,c=>0xe0000+c.codePointAt(0)),0xe007f);
+ const text=b.dataset.command+(b.dataset.choice==='edit'?'\n\n'+draft.value:'')+tag;
  parent.postMessage({type:'input:prompt:submit',text},'*');
 });
 draft.oninput=()=>draft.setCustomValidity('');
