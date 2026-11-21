@@ -51,7 +51,7 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Scope — `src/agenthon/ui/admin.py`, `tests/test_admin.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — Tutte le richieste compaiono subito. Il dettaglio mostra prompt originale, prompt inviato e risposta quando disponibili. Il flag si attiva al primo rilevamento PII e resta visibile dopo l'esecuzione.
-- Delivery notes — `build_admin` in `src/agenthon/ui/admin.py`. Filtri rischio, gravità e stato. La dashboard legge cronologia e trace da `Proxy.history` e `Proxy.trace_events`. Verificati selezione, prompt inviato, risposta e persistenza del flag PII dopo la rotta simulata. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_admin.py`.
+- Delivery notes — `build_admin` in `src/agenthon/ui/admin.py`. Cronologia responsive con filtri rischio, gravità e stato, confronto dei prompt e trace espandibile. La dashboard legge cronologia e trace da `Proxy.history` e `Proxy.trace_events`. Verificati selezione, prompt inviato, risposta e persistenza del flag PII dopo la rotta simulata. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_admin.py`.
 
 ## T7 — Entrypoint e prova demo (UI + Core) · TODO
 

@@ -42,6 +42,24 @@ def _history_rows(entries):
     ]
 
 
+def _request_table(rows, selected):
+    body = []
+    for stamp, request_id, status, route, risk in rows:
+        rid = escape(request_id, quote=True)
+        state = status.lower().replace(" ", "-")
+        body.append(
+            f'<tr data-id="{rid}" aria-current="{str(request_id == selected).lower()}">'
+            f'<td data-title="Time (UTC)"><time>{escape(stamp)}</time></td>'
+            f'<td data-title="Request ID"><button type="button" class="request-link" title="{rid}">{rid}</button></td>'
+            f'<td data-title="Status"><span class="state {state}">{escape(status)}</span></td>'
+            f'<td data-title="Route">{escape(route)}</td>'
+            f'<td data-title="PII risk"><span class="{"risk" if risk == "Detected" else "quiet"}">{risk}</span></td>'
+            '</tr>'
+        )
+    headings = "".join(f'<th scope="col">{label}</th>' for label in HEADERS)
+    return f'<table class="ledger"><thead><tr>{headings}</tr></thead><tbody>{"".join(body)}</tbody></table>'
+
+
 def _has_severity(events, severity):
     for event in events:
         output = event["output"]
@@ -80,29 +98,34 @@ def build_admin(
     previous_rows = gr.State([])
     timer = gr.Timer(refresh_seconds)
     gr.Markdown("# Request history", elem_classes=["view-title"])
-    totals = gr.HTML(elem_id="request-counts", js_on_load=None)
+    totals = gr.HTML(elem_id="request-counts", apply_default_css=False, js_on_load=None)
     with gr.Row(elem_id="history-filters"):
         risk_filter = gr.Dropdown(["All", "Detected", "No detection"], value="All", label="PII risk", filterable=False)
         severity_filter = gr.Dropdown(["All", "Low", "Medium", "High"], value="All", label="Severity", filterable=False)
         status_filter = gr.Dropdown(["All", *STATUS.values()], value="All", label="Status", filterable=False)
     filters = [risk_filter, severity_filter, status_filter]
-    table = gr.Dataframe(
-        value=[], headers=HEADERS, datatype="str", interactive=False, label="Requests", elem_id="request-grid",
+    table = gr.HTML(
+        value=_request_table([], None), elem_id="request-grid", apply_default_css=False,
+        js_on_load="""element.addEventListener('click', event => {
+            const row = event.target.closest('tr[data-id]');
+            if (row) trigger('click', {request_id: row.dataset.id});
+        });""",
     )
-    notice = gr.Markdown("Select a request to view its details.")
+    notice = gr.Markdown("Waiting for the first request.", elem_id="history-notice")
 
-    with gr.Group(visible=False, elem_id="request-detail") as detail:
-        summary = gr.HTML(js_on_load=None)
-        original = gr.Textbox(label="Original prompt", interactive=False, lines=3)
-        with gr.Row():
-            sent = gr.Textbox(label="Sent prompt", interactive=False, lines=3)
-            response = gr.Textbox(label="Model response", interactive=False, lines=3)
-        trace = gr.Dataframe(label="Trace", headers=["Time (UTC)", "Agent", "Action", "Input", "Output", "Confidence"],
-                             datatype="str", value=[], interactive=False, wrap=True)
+    with gr.Column(visible=False, elem_id="request-detail") as detail:
+        summary = gr.HTML(apply_default_css=False, js_on_load=None)
+        with gr.Row(elem_id="prompt-comparison"):
+            original = gr.Textbox(label="Original prompt", interactive=False, lines=5, max_lines=12, buttons=["copy"])
+            sent = gr.Textbox(label="Sent prompt", interactive=False, lines=5, max_lines=12, buttons=["copy"])
+        response = gr.Textbox(label="Model response", interactive=False, lines=4, max_lines=16, buttons=["copy"])
+        with gr.Accordion("Execution trace", open=False):
+            trace = gr.Dataframe(headers=["Time (UTC)", "Agent", "Action", "Input", "Output", "Confidence"],
+                                 datatype="str", value=[], interactive=False, wrap=True, buttons=[], show_label=False)
 
     outputs = [selected, previous_rows, table, notice, detail, summary, original, sent, response, trace, totals]
 
-    def refresh(request_id, last_rows, risk, severity, status):
+    def refresh(request_id, last_rows, risk, severity, status, *, force=False):
         try:
             history = list_requests()
             entries = [
@@ -120,10 +143,10 @@ def build_admin(
             ("PII risk", sum(e["risk_flag"] for e in history)),
         ]
         summary_counts = '<div class="counts">' + "".join(
-            f"<div><strong>{count}</strong><span>{label}</span></div>" for label, count in counts
+            f"<div><span>{label}</span><strong>{count}</strong></div>" for label, count in counts
         ) + "</div>"
         rows = _history_rows(entries)
-        table_update = rows if rows != last_rows else gr.skip()
+        table_update = _request_table(rows, request_id) if force or rows != last_rows else gr.skip()
         entry = next((entry for entry in entries if entry["request_id"] == request_id), None)
         if entry is None:
             message = "Select a request to view its details." if rows else "No requests yet."
@@ -131,10 +154,11 @@ def build_admin(
                 message = "No requests match these filters."
             return None, rows, table_update, message, gr.update(visible=False), "", "", "", "", [], summary_counts
 
-        risk = ""
-        if entry["risk_flag"]:
-            risk = ' <strong style="color:#8e2430;background:#fce1e4;padding:0.2rem 0.4rem">PII Risk</strong>'
-        heading = f'<h3>Request {escape(request_id)}</h3><p>{STATUS[entry["status"]]}{risk}</p>'
+        badge = '<span class="risk">PII Risk</span>' if entry["risk_flag"] else ""
+        heading = (
+            f'<div class="detail-head"><div><h2>Request details</h2><code>{escape(request_id)}</code></div>'
+            f'<div><span class="state {entry["status"].replace("_", "-")}">{STATUS[entry["status"]]}</span> {badge}</div></div>'
+        )
         try:
             events = _trace_rows(list_trace(request_id))
             message = ""
@@ -148,11 +172,8 @@ def build_admin(
             entry["response"] or "Unavailable", events, summary_counts,
         )
 
-    def select(last_rows, risk, severity, status, event: gr.SelectData):
-        if not event.row_value or len(event.row_value) != len(HEADERS):
-            return (gr.skip(),) * len(outputs)
-        # The selected row carries its ID even if polling has reordered the table.
-        return refresh(event.row_value[1], last_rows, risk, severity, status)
+    def select(last_rows, risk, severity, status, event: gr.EventData):
+        return refresh(event.request_id, last_rows, risk, severity, status, force=True)
 
     event_options = {
         "outputs": outputs,
@@ -162,4 +183,6 @@ def build_admin(
     }
     gr.on([app.load, timer.tick, *(widget.input for widget in filters)], refresh,
           [selected, previous_rows, *filters], **event_options)
-    table.select(select, [previous_rows, *filters], **event_options)
+    selection = table.click(select, [previous_rows, *filters], **event_options)
+    selection.then(fn=None, js="""() => requestAnimationFrame(() =>
+        document.getElementById('request-detail')?.scrollIntoView({block:'start'}))""")
