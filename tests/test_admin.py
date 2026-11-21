@@ -4,8 +4,11 @@ import unittest
 import gradio as gr
 from gradio.state_holder import SessionState
 
+from agenthon.pii import PIIDetector
+from agenthon.proxy import Proxy
 from agenthon.ui.admin import build_admin
 from test_contracts import ROOT, validator
+from test_proxy import find_names
 
 
 CASES = {case["id"]: case for case in json.loads((ROOT / "data/demo/requests.json").read_text())}
@@ -109,3 +112,29 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(completed[9].root, [trace])
         unchanged = await self.trigger("tick")
         self.assertEqual(unchanged[2], {"__type__": "update"})
+
+    async def test_t4_history_and_trace_follow_the_selected_request(self):
+        proxy = Proxy(lambda prompt, route: "Demo response", detector=PIIDetector(find_names=find_names))
+        with gr.Blocks(analytics_enabled=False) as self.app:
+            build_admin(self.app, proxy.history, proxy.trace_events)
+        self.session = SessionState(self.app)
+
+        clean = proxy.submit({"prompt": CASES["demo-clean"]["prompt"]})
+        original = CASES["demo-local"]["prompt"]
+        review = proxy.submit({"prompt": original})
+        snapshot = await self.trigger("load")
+        pending_row, clean_row = snapshot[2]["data"]
+        self.assertEqual(clean_row[1:], [clean["request_id"], "Completed", "DeepSeek", "—"])
+        self.assertEqual(pending_row[1:], [review["request_id"], "Review required", "Pending", "Detected"])
+        pending = await self.trigger("select", pending_row)
+        self.assertEqual(pending[6:9], [original, "Unavailable", "Unavailable"])
+
+        proxy.decide({
+            "request_id": review["request_id"], "revision": review["revision"], "action": "local_simulated",
+        })
+        completed = await self.trigger("tick")
+        self.assertEqual(completed[2]["data"][0][2:], ["Completed", "Local (simulated with DeepSeek)", "Detected"])
+        self.assertEqual(completed[6:9], [original, review["proposed_prompt"], "Demo response"])
+        events = completed[9].root
+        self.assertEqual({event["request_id"] for event in events}, {review["request_id"]})
+        self.assertEqual(events[-1]["action"], "complete")
