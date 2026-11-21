@@ -293,6 +293,12 @@ class ProxyTests(unittest.TestCase):
             raw = path.read_text()
             events = [json.loads(line) for line in raw.splitlines()]
         self.assertEqual(events, proxy.trace_events(review["request_id"]))
+        enriched = proxy.trace_events(review["request_id"], include_summary=True)
+        self.assertEqual(
+            [event["summary"] for event in enriched if "summary" in event],
+            ["Redacted prompt preserved. Notes: 2. Notes with guidance: 0.",
+             "Notices: 2. Suggested actions: 0."],
+        )
         self.assertEqual({event["agent"] for event in events},
                          {"proxy", "pii", "rephrase", "suggestion", "model"})
         for value in ("Jordan Miller", "jordan.miller@example.test", "Demo answer."):
@@ -387,6 +393,14 @@ class DeepSeekTests(unittest.TestCase):
                 },
             ],
         }
+        review_with_nulls = {
+            **review_notes,
+            "missing_information": [{**review_notes["missing_information"][0], "guidance": None}],
+        }
+        suggestions_with_nulls = {
+            **suggestions,
+            "items": [{**suggestions["items"][0], "action": None}, *suggestions["items"][1:]],
+        }
         unsafe_suggestions = {
             "confidence": 0.95,
             "items": [{"message": "Address the message to maya.brooks@example.test."}],
@@ -401,9 +415,9 @@ class DeepSeekTests(unittest.TestCase):
         proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
         with patch("agenthon.models.urlopen", side_effect=[
             completion("invalid JSON"),
-            completion(json.dumps(review_notes)),
+            completion(json.dumps(review_with_nulls)),
             completion(json.dumps(unsafe_suggestions)),
-            completion(json.dumps(suggestions)),
+            completion(json.dumps(suggestions_with_nulls)),
             completion("Demo answer."),
         ]) as transport:
             review = proxy.submit({"prompt": case["prompt"]})
@@ -411,10 +425,13 @@ class DeepSeekTests(unittest.TestCase):
             self.assertEqual(review["status"], "review_required")
             self.assertEqual(review["proposed_prompt"], proposal)
             self.assertEqual(review["suggestions"], suggestions["items"])
-            suggestion_events = [
-                event["action"] for event in proxy.trace_events() if event["agent"] == "suggestion"
-            ]
-            self.assertEqual(suggestion_events, ["retry", "suggest"])
+            events = proxy.trace_events(review["request_id"], include_summary=True)
+            self.assertEqual(
+                [(event["agent"], event["summary"]) for event in events if event["action"] == "retry"],
+                [("rephrase", "DeepSeek returned malformed JSON."),
+                 ("suggestion", "Agent output repeated a value removed by the privacy check.")],
+            )
+            self.assertNotIn("maya.brooks@example.test", json.dumps(events))
             self.assertIsNone(proxy.history()[0]["sent_prompt"])
 
             for index, call in enumerate(transport.call_args_list):
@@ -454,6 +471,27 @@ class DeepSeekTests(unittest.TestCase):
                 {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
                 {"role": "user", "content": proposal},
             ])
+
+    def test_invalid_review_contract_reports_the_check_without_raw_fields(self):
+        phone = "+1-202-555-0142"
+        provider = DeepSeekProvider(api_key="test-key")
+        malformed_review = {
+            "confidence": 0.9,
+            "missing_information": [{"detail": phone}],
+        }
+        proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
+        with patch.object(provider, "_complete_json", return_value=malformed_review):
+            result = proxy.submit({"prompt": f"Draft a text to {phone} asking to confirm delivery at 14:30"})
+
+        self.assertEqual(result["allowed_actions"], ["edit"])
+        events = proxy.trace_events(result["request_id"], include_summary=True)
+        rephrase_events = [event for event in events if event["agent"] == "rephrase"]
+        self.assertEqual([event["action"] for event in rephrase_events], ["retry", "fail"])
+        self.assertEqual(
+            [event["summary"] for event in rephrase_events],
+            ["Contract check failed at missing_information (required)."] * 2,
+        )
+        self.assertNotIn(phone, json.dumps(events))
 
     def test_missing_api_key_fails_before_network_access(self):
         with patch("agenthon.models.urlopen") as transport:

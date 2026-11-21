@@ -27,15 +27,25 @@ def _validators():
     }
 
 
+class ContractError(ValueError):
+    def __init__(self, diagnostic):
+        super().__init__("Invalid structured data.")
+        self.diagnostic = diagnostic
+
+
 def validate_contract(schema_name, payload, definition=None):
     try:
         json.dumps(payload, allow_nan=False)
     except (TypeError, ValueError):
-        raise ValueError("Invalid structured data.") from None
+        raise ContractError("Response could not be serialized as JSON.") from None
     validator = _validators()[schema_name]
     if definition is not None:
         schema_id = validator.schema["$id"]
         validator = validator.evolve(schema={"$ref": f"{schema_id}#/$defs/{definition}"})
-    if not validator.is_valid(payload):
-        # Validation errors can embed the whole value, including private prompts.
-        raise ValueError("Invalid structured data.")
+    error = next(validator.iter_errors(payload), None)
+    if error is not None:
+        # Use names from the schema. Error messages and instance paths can contain private data.
+        path = list(error.absolute_schema_path)
+        fields = [field for parent, field in zip(path, path[1:]) if parent == "properties"]
+        location = ".".join(fields) if fields else definition or schema_name
+        raise ContractError(f"Contract check failed at {location} ({error.validator}).")

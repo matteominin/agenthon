@@ -8,6 +8,7 @@ from gradio.state_holder import SessionState
 from agenthon.pii import PIIDetector
 from agenthon.proxy import Proxy
 from agenthon.ui.admin import build_admin
+from agenthon.ui.app import build_services
 from test_contracts import ROOT, validator
 from test_proxy import find_names
 
@@ -121,8 +122,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_t4_history_and_trace_follow_the_selected_request(self):
         proxy = Proxy(lambda prompt, route: "Demo response", detector=PIIDetector(find_names=find_names))
-        with gr.Blocks(analytics_enabled=False) as self.app:
-            build_admin(self.app, proxy.history, proxy.trace_events)
+        _, self.app = build_services(proxy)
         self.session = SessionState(self.app)
 
         clean = proxy.submit({"prompt": CASES["demo-clean"]["prompt"]})
@@ -144,6 +144,9 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         events = completed[9]["data"]
         self.assertEqual([row[2] for row in events], [e["action"] for e in proxy.trace_events(review["request_id"])])
         self.assertEqual(events[-1][2], "complete")
+        outputs = {row[2]: row[4] for row in events}
+        self.assertIn("Redacted prompt preserved.", outputs["rephrase"])
+        self.assertIn("Suggested actions:", outputs["suggest"])
         filtered = await self.trigger("input", filters=("Detected", "Medium", "Completed"))
         self.assertEqual([row[1] for row in filtered[2]["data"]], [review["request_id"]])
         empty = await self.trigger("input", filters=("Detected", "High", "Completed"))

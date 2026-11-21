@@ -1,5 +1,6 @@
 import json
 import os
+from enum import Enum
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -20,6 +21,7 @@ Report material gaps and their practical impact on the result. Add guidance only
 Include a labeled notice for each redacted field. When the field does not affect the result, say so briefly.
 For example, a masked name in an arithmetic problem has no bearing on the calculation.
 For a notice tied to a placeholder, use that exact placeholder as its label. Omit label for other notices.
+Omit guidance when none is needed. Do not use null for optional fields.
 Keep each detail and limitation together within 300 characters, and any guidance within 300 characters.
 Return only a JSON object with confidence (0 to 1) and missing_information (an array).
 Example JSON:
@@ -38,7 +40,7 @@ Never ask the employee to provide a detail that is already stated in the prompt.
 Add a separate action only when a specific non-identifying detail would materially improve the result.
 Explain what to provide or change. Use add_context, generalize, or remove as appropriate. An address or identifier alone warrants no action.
 For a notice or action tied to an entity, include both its label and severity. For a general item, omit both.
-For notices, omit action. Never request private data, infer placeholder values, or repeat the proposed prompt.
+For notices, omit action. Do not use null for optional fields. Never request private data, infer placeholder values, or repeat the proposed prompt.
 Return only a JSON object with items and confidence (0 to 1). Each item has a message of at most 300 characters.
 Example JSON:
 {"items":[
@@ -53,8 +55,21 @@ class ModelError(RuntimeError):
     pass
 
 
+class OutputIssue(Enum):
+    MALFORMED_JSON = "DeepSeek returned malformed JSON."
+    MISSING_CONTENT = "The DeepSeek response had no message content."
+    EMPTY_CONTENT = "DeepSeek returned empty or non-text message content."
+    MISSING_NOTES = "Expected a JSON object with a missing_information array."
+    CHANGED_PROMPT = "Rephrase changed the verified redacted prompt."
+    LOW_CONFIDENCE = "Agent confidence was below 50%."
+    UNKNOWN_LABEL = "Agent output referenced an unknown placeholder."
+    REMOVED_VALUE = "Agent output repeated a value removed by the privacy check."
+
+
 class InvalidModelOutput(ModelError):
-    pass
+    def __init__(self, message="Invalid model output."):
+        self.issue = message if isinstance(message, OutputIssue) else None
+        super().__init__(self.issue.value if self.issue is not None else message)
 
 
 class DeepSeekProvider:
@@ -69,8 +84,9 @@ class DeepSeekProvider:
     def rephrase(self, data):
         review = self._complete_json(data, REPHRASE_SYSTEM_PROMPT)
         if not isinstance(review, dict) or not isinstance(review.get("missing_information"), list):
-            raise InvalidModelOutput("Invalid DeepSeek review notes.")
-        return {**review, "proposed_prompt": data["prompt"], "changed": False}
+            raise InvalidModelOutput(OutputIssue.MISSING_NOTES)
+        notes = _omit_null_fields(review["missing_information"], {"label", "guidance"})
+        return {**review, "proposed_prompt": data["prompt"], "changed": False, "missing_information": notes}
 
     def suggest(self, rephrased, entities):
         data = {
@@ -78,14 +94,17 @@ class DeepSeekProvider:
             "missing_information": rephrased.get("missing_information", []),
             "entities": entities,
         }
-        return self._complete_json(data, SUGGESTION_SYSTEM_PROMPT)
+        suggestions = self._complete_json(data, SUGGESTION_SYSTEM_PROMPT)
+        if isinstance(suggestions, dict) and isinstance(suggestions.get("items"), list):
+            suggestions["items"] = _omit_null_fields(suggestions["items"], {"label", "severity", "action"})
+        return suggestions
 
     def _complete_json(self, data, system_prompt):
         content = self._complete(json.dumps(data, ensure_ascii=False), system_prompt, json_output=True)
         try:
             return json.loads(content)
         except ValueError:
-            raise InvalidModelOutput("Invalid structured DeepSeek response.") from None
+            raise InvalidModelOutput(OutputIssue.MALFORMED_JSON) from None
 
     def _complete(self, prompt, system_prompt, *, json_output=False):
         if not self._api_key:
@@ -121,11 +140,19 @@ class DeepSeekProvider:
                 raise TimeoutError("DeepSeek timed out.") from None
             raise ModelError("DeepSeek request failed.") from None
         except (ValueError, UnicodeError):
-            raise InvalidModelOutput("Invalid DeepSeek response.") from None
+            raise InvalidModelOutput(OutputIssue.MALFORMED_JSON) from None
         try:
             answer = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
-            raise InvalidModelOutput("Invalid DeepSeek response.") from None
+            raise InvalidModelOutput(OutputIssue.MISSING_CONTENT) from None
         if not isinstance(answer, str) or not answer.strip():
-            raise InvalidModelOutput("Invalid DeepSeek response.")
+            raise InvalidModelOutput(OutputIssue.EMPTY_CONTENT)
         return answer
+
+
+def _omit_null_fields(items, optional):
+    return [
+        {key: value for key, value in item.items() if value is not None or key not in optional}
+        if isinstance(item, dict) else item
+        for item in items
+    ]

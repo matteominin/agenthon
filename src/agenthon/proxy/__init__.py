@@ -4,13 +4,13 @@ from copy import deepcopy
 from threading import Lock
 from uuid import uuid4
 
-from agenthon.models import DeepSeekProvider, InvalidModelOutput, ModelError
+from agenthon.models import DeepSeekProvider, InvalidModelOutput, ModelError, OutputIssue
 from agenthon.pii import PIIDetector
 from agenthon.rephrase import rephrase
 from agenthon.suggestion import suggest
 from agenthon.trace import TraceLog, timestamp
 
-from .contracts import validate_contract
+from .contracts import ContractError, validate_contract
 
 
 _PLACEHOLDER = re.compile(r"\[[A-Z]+(?:_[A-Z]+)*_[1-9][0-9]*\]")
@@ -113,8 +113,8 @@ class Proxy:
             validate_contract("admin_request", entry)
         return entries
 
-    def trace_events(self, request_id=None):
-        return self._trace.events(request_id)
+    def trace_events(self, request_id=None, *, include_summary=False):
+        return self._trace.events(request_id, include_summary=include_summary)
 
     def _validated_result(self, result):
         validate_contract("proxy", result, "result")
@@ -122,23 +122,29 @@ class Proxy:
 
     def _attempt(self, request_id, agent, operation, metadata=None):
         for attempt in range(2):
+            summary = None
             try:
                 return operation()
             except TimeoutError:
                 reason = "timeout"
-            except InvalidModelOutput:
+            except InvalidModelOutput as exc:
                 reason = "invalid_output"
+                summary = exc.issue.value if exc.issue is not None else "The agent returned an invalid response."
+            except ContractError as exc:
+                reason = "invalid_output"
+                summary = exc.diagnostic
             except ModelError:
                 reason = "model_error"
             except Exception:
                 reason = "model_error" if agent == "model" else "invalid_output"
+                summary = "The agent raised an unexpected error."
 
             if attempt == 0 and reason != "model_error":
                 self._trace.record(request_id, agent, "retry", input=metadata,
-                                   output={"reason": reason})
+                                   output={"reason": reason}, summary=summary)
                 continue
             self._trace.record(request_id, agent, "fail", input=metadata,
-                               output={"reason": reason})
+                               output={"reason": reason}, summary=summary)
             raise _StageFailure(reason)
 
     def _detect(self, prompt, known_values):
@@ -201,37 +207,46 @@ class Proxy:
             validate_contract("agents", result, "rephrase")
             proposed = result["proposed_prompt"]
             missing = result.get("missing_information", [])
-            if (proposed != redacted
-                    or result["confidence"] < 0.5
-                    or result["changed"]
-                    or _contains_removed_value(proposed, known_values.values())
-                    or any(
-                        item.get("label") not in allowed_labels
-                        or _contains_removed_value(item["detail"], known_values.values())
-                        or _contains_removed_value(item["limitation"], known_values.values())
-                        or _contains_removed_value(item.get("guidance", ""), known_values.values())
-                        for item in missing
-                    )):
-                raise ValueError("Unsafe revised prompt.")
+            if proposed != redacted or result["changed"]:
+                raise InvalidModelOutput(OutputIssue.CHANGED_PROMPT)
+            if result["confidence"] < 0.5:
+                raise InvalidModelOutput(OutputIssue.LOW_CONFIDENCE)
+            if any(item.get("label") not in allowed_labels for item in missing):
+                raise InvalidModelOutput(OutputIssue.UNKNOWN_LABEL)
+            note_text = (item[field] for item in missing for field in ("detail", "limitation", "guidance")
+                         if field in item)
+            if (_contains_removed_value(proposed, known_values.values())
+                    or any(_contains_removed_value(text, known_values.values()) for text in note_text)):
+                raise InvalidModelOutput(OutputIssue.REMOVED_VALUE)
             return result
 
         revised = self._attempt(request_id, "rephrase", rephrase_checked, metadata)
-        self._trace.record(request_id, "rephrase", "rephrase", input=metadata,
-                           confidence=revised["confidence"])
+        notes = revised.get("missing_information", [])
+        guidance_count = sum("guidance" in note for note in notes)
+        self._trace.record(
+            request_id, "rephrase", "rephrase", input=metadata, output={"status": "completed"},
+            confidence=revised["confidence"],
+            summary=f"Redacted prompt preserved. Notes: {len(notes)}. Notes with guidance: {guidance_count}.",
+        )
 
         def suggest_checked():
             result = self._suggest(deepcopy(revised), deepcopy(entities))
             validate_contract("agents", result, "suggestions")
-            if (result["confidence"] < 0.5
-                    or any(item.get("label") not in allowed_labels
-                           or _contains_removed_value(item["message"], known_values.values())
-                           for item in result["items"])):
-                raise ValueError("Invalid suggestions.")
+            if result["confidence"] < 0.5:
+                raise InvalidModelOutput(OutputIssue.LOW_CONFIDENCE)
+            if any(item.get("label") not in allowed_labels for item in result["items"]):
+                raise InvalidModelOutput(OutputIssue.UNKNOWN_LABEL)
+            if any(_contains_removed_value(item["message"], known_values.values()) for item in result["items"]):
+                raise InvalidModelOutput(OutputIssue.REMOVED_VALUE)
             return result
 
         suggestions = self._attempt(request_id, "suggestion", suggest_checked, metadata)
-        self._trace.record(request_id, "suggestion", "suggest", input=metadata,
-                           confidence=suggestions["confidence"])
+        actions = sum("action" in item for item in suggestions["items"])
+        notices = len(suggestions["items"]) - actions
+        self._trace.record(
+            request_id, "suggestion", "suggest", input=metadata, output={"status": "completed"},
+            confidence=suggestions["confidence"], summary=f"Notices: {notices}. Suggested actions: {actions}.",
+        )
         return revised["proposed_prompt"], suggestions["items"]
 
     def _review(self, request_id, revision, reason, known_values,

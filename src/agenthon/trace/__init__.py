@@ -18,10 +18,10 @@ class TraceLog:
     def __init__(self, validate, path=None):
         self._validate = validate
         self._path = Path(path) if path is not None else None
-        self._lines = []
+        self._records = []
         self._lock = Lock()
 
-    def record(self, request_id, agent, action, *, input=None, output=None, confidence=None):
+    def record(self, request_id, agent, action, *, input=None, output=None, confidence=None, summary=None):
         event = {
             "timestamp": timestamp(),
             "request_id": request_id,
@@ -34,7 +34,7 @@ class TraceLog:
         self._validate("trace_event", event)
         line = json.dumps(event, separators=(",", ":"))
         with self._lock:
-            self._lines.append(line)
+            self._records.append((line, summary))
             if self._path is not None:
                 try:
                     with self._path.open("a", encoding="utf-8") as stream:
@@ -42,11 +42,15 @@ class TraceLog:
                 except OSError:
                     _LOGGER.warning("Unable to write the trace file. The event is available in memory.")
 
-    def events(self, request_id=None):
+    def events(self, request_id=None, *, include_summary=False):
         with self._lock:
-            lines = self._lines.copy()
-        events = (json.loads(line) for line in lines)
-        return [
-            event for event in events
-            if request_id is None or event["request_id"] == request_id
-        ]
+            records = self._records.copy()
+        events = []
+        for line, summary in records:
+            event = json.loads(line)
+            if request_id is not None and event["request_id"] != request_id:
+                continue
+            if include_summary and summary is not None:
+                event["summary"] = summary
+            events.append(event)
+        return events

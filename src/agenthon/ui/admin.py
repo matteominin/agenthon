@@ -70,12 +70,21 @@ def _has_severity(events, severity):
     return False
 
 
+def _trace_output(event):
+    output = event["output"]
+    summary = event.get("summary")
+    if summary:
+        reason = output.get("reason")
+        return f"{reason}: {summary}" if reason else summary
+    return json.dumps(output, sort_keys=True) if output else "—"
+
+
 def _trace_rows(events):
     return [
         [
             _timestamp(event["timestamp"]).strftime("%H:%M:%S"),
             event["agent"], event["action"],
-            json.dumps(event["input"], sort_keys=True), json.dumps(event["output"], sort_keys=True),
+            json.dumps(event["input"], sort_keys=True) if event["input"] else "—", _trace_output(event),
             "—" if event["confidence"] is None else f"{event['confidence']:.0%}",
         ]
         for event in sorted(events, key=lambda event: _timestamp(event["timestamp"]))
@@ -92,7 +101,7 @@ def build_admin(
     """Add the admin view to the active Blocks context.
 
     The proxy callbacks return snapshots of validated admin_request.json records
-    and trace_event.json records for a request ID. The proxy owns the risk flag.
+    and trace events with optional admin summaries for a request ID. The proxy owns the risk flag.
     """
     selected = gr.State(None)
     previous_rows = gr.State([])
