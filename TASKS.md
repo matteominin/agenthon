@@ -23,12 +23,12 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Done when — I casi pulito e PII producono un esito validato, i segnaposto rimangono stabili durante la revisione e i falsi positivi noti della demo in inglese sono coperti dai test. Prima dell’integrazione, concordare i prefissi inglesi dei segnaposto nei contratti condivisi.
 - Delivery notes — Rilevamento locale in `src/agenthon/pii/` con segnaposto `NAME`, `EMAIL`, `PHONE` e `SSN`. Con spaCy, `en_core_web_sm` e jsonschema disponibili, eseguire `PYTHONPATH=src python -m unittest discover -s tests -p test_pii.py`.
 
-## T3 — Rephrase e Suggestion (Core) · TODO
+## T3 — Rephrase e Suggestion (Core) · DONE
 
 - Scope — `src/agenthon/rephrase/`, `src/agenthon/suggestion/`, `tests/test_rephrase.py`, `tests/test_suggestion.py`.
 - Dipende da — T1, T2. Prima dell'integrazione, concordare come rappresentare nei contratti le informazioni mancanti, anche quando non sono associate a un segnaposto.
 - Done when — Rephrase propone comunque un testo strutturato quando manca contesto e individua le informazioni assenti. Suggestion le segnala e propone azioni solo per dettagli con un beneficio sostanziale per la risposta. I test coprono casi ipotetici espliciti, conservazione dei segnaposto, assenza dei valori rimossi e distinzione tra avvisi e azioni.
-- Delivery notes —
+- Delivery notes — Proposte e scenari condizionali in `src/agenthon/rephrase/`; avvisi e azioni selettive in `src/agenthon/suggestion/`. Eseguire con `PYTHONPATH=src` i test `test_rephrase.py`, `test_suggestion.py` e `test_contracts.py` via unittest discover.
 
 ## T4 — Proxy, DeepSeek e trace (Core) · TODO
 

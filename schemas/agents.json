@@ -122,6 +122,17 @@
       "required": ["prompt", "entities"],
       "additionalProperties": false
     },
+    "missing_information_item": {
+      "type": "object",
+      "properties": {
+        "detail": { "type": "string", "minLength": 1 },
+        "limitation": { "type": "string", "minLength": 1 },
+        "label": { "$ref": "#/$defs/label" },
+        "guidance": { "type": "string", "minLength": 1 }
+      },
+      "required": ["detail", "limitation"],
+      "additionalProperties": false
+    },
     "rephrase": {
       "type": "object",
       "properties": {
@@ -131,6 +142,10 @@
         },
         "changed": {
           "type": "boolean"
+        },
+        "missing_information": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/missing_information_item" }
         },
         "confidence": {
           "$ref": "#/$defs/confidence"
@@ -166,11 +181,12 @@
         }
       },
       "required": [
-        "label",
-        "severity",
-        "action",
         "message"
       ],
+      "dependentRequired": {
+        "label": ["severity"],
+        "severity": ["label"]
+      },
       "additionalProperties": false
     },
     "suggestions": {

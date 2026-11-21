@@ -86,6 +86,41 @@ class ContractTests(unittest.TestCase):
             "prompt": prompt, "entities": [{**entity, "value": "Jordan Miller"}]
         }))
 
+    def test_missing_information_and_optional_suggestion_actions(self):
+        agents = validator("agents")
+        missing = {
+            "detail": "Staff availability is missing.",
+            "limitation": "Shift feasibility is uncertain.",
+            "guidance": "Provide availability windows by role.",
+        }
+        result = {
+            "proposed_prompt": "Draft a hypothetical shift plan.",
+            "changed": True,
+            "confidence": 1,
+            "missing_information": [missing],
+        }
+        agents.validate(result)
+        self.assertFalse(agents.is_valid({
+            **result, "missing_information": [{"detail": missing["detail"]}]
+        }))
+        advice = {"message": f"{missing['detail']} {missing['limitation']}"}
+        action = {"message": missing["guidance"], "action": "add_context"}
+        agents.validate({"items": [advice, action], "confidence": 1})
+        self.assertFalse(agents.is_valid({
+            "items": [{**advice, "label": "[NAME_1]"}], "confidence": 1,
+        }))
+        proxy = validator("proxy")
+        proxy.validate({
+            "request_id": "demo-shifts",
+            "status": "review_required",
+            "revision": 1,
+            "reason": "pii_found",
+            "proposed_prompt": result["proposed_prompt"],
+            "entities": [{"label": "[NAME_1]", "type": "name"}],
+            "suggestions": [advice, action],
+            "allowed_actions": ["approve", "edit", "local_simulated"],
+        })
+
     def test_admin_history_has_clean_and_flagged_requests(self):
         cases = json.loads((ROOT / "data" / "demo" / "requests.json").read_text())
         admin = validator("admin_request")
