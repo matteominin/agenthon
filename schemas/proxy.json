@@ -48,6 +48,14 @@
             },
             "action": {
               "const": "approve"
+            },
+            "revealed_labels": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^\\[(NAME|EMAIL|PHONE|SSN|CONTRACT_ID)_[1-9][0-9]*\\]$"
+              }
             }
           },
           "required": [

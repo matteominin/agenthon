@@ -11,15 +11,15 @@ from urllib.request import Request, urlopen
 
 
 # The trusted Pipe binds each action to the review iframe and assistant message.
-REVIEW_BRIDGE = Template("""
+REVIEW_BRIDGE = Template(r"""
 const review = $review;
-const key = Symbol.for('tdb.review.controls');
+const key = Symbol.for('tdb.review.disclosureControls');
 if (!window[key]) {
     const reviews = new Map();
     window[key] = reviews;
     window.addEventListener('message', async event => {
         if (event.data?.type !== 'tdb:review') return;
-        const {token, action, draft} = event.data;
+        const {token, action, draft, revealed = []} = event.data;
         const current = reviews.get(token);
         if (!current || !Object.hasOwn(current.commands, action)) return;
         const frame = Array.from(document.querySelectorAll('iframe[srcdoc]')).find(candidate =>
@@ -28,7 +28,10 @@ if (!window[key]) {
         );
         if (!frame || (frame.closest('[data-chat]')?.getAttribute('data-chat') ?? 'main') !== 'main') return;
         if (action === 'edit' && (typeof draft !== 'string' || !draft.trim())) return;
-        const text = current.commands[action] + (action === 'edit' ? '\\n\\n' + draft : '') + current.suffix;
+        if (action === 'approve' && (!Array.isArray(revealed) || !revealed.every(label =>
+            typeof label === 'string' && /^\[(NAME|EMAIL|PHONE|SSN|CONTRACT_ID)_[1-9][0-9]*\]$$/.test(label)))) return;
+        const detail = action === 'edit' ? draft : action === 'approve' && revealed.length ? JSON.stringify(revealed) : '';
+        const text = current.commands[action] + (detail ? '\n\n' + detail : '') + current.suffix;
         const payload = {
             ...current.payload,
             messages: [{role: 'user', content: text}],

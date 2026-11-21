@@ -20,9 +20,11 @@ Il proxy conserva mappa dei valori, testo e risposte in memoria. La mappa scade 
 
 Il proxy consuma atomicamente la coppia `request_id` e `revision` prima del ricontrollo o dell’invio, così ogni revisione può produrre un solo invio.
 
+La dashboard associa l’ID utente alla richiesta in memoria lato chat, ricontrolla localmente i prompt finali e calcola un minimo di valori protetti sulle richieste completate usando il massimo per categoria tra le revisioni.
+
 ## D5 — UI riusabile
 
-Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per modifica e invio, la Pipe registra azioni associate al messaggio assistente e alla revisione. Open WebUI aggiorna lo stesso messaggio e mantiene la scheda in sandbox.
+Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per modifica e invio, la Pipe registra azioni associate al messaggio assistente e alla revisione. Open WebUI aggiorna lo stesso messaggio e mantiene la scheda in sandbox. Il proxy convalida i segnaposto rivelati contro la revisione attiva e ripristina solo i valori selezionati per l'approvazione DeepSeek.
 
 ## D6 — RAG dopo il percorso P0
 

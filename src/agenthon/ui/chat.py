@@ -1,5 +1,6 @@
 """Review cards and revision-bound chat turns for the Open WebUI Pipe."""
 from html import escape
+import json
 from pathlib import Path
 from string import Template
 import re
@@ -202,7 +203,12 @@ class Chat:
     def __init__(self, proxy):
         self.proxy = proxy
         self.pending = {}
+        self.request_users = {}
         self.lock = Lock()
+
+    def request_user(self, request_id):
+        with self.lock:
+            return self.request_users.get(request_id)
 
     def turn(self, owner, text, *, message_id=None, inline_review=False):
         command = _parse_command(text)
@@ -214,6 +220,16 @@ class Chat:
         if command:
             label, draft, token = command
             action = next(key for key, value in BUTTONS.items() if value == label)
+            revealed = []
+            if action == "approve" and draft is not None:
+                try:
+                    revealed = json.loads(draft)
+                except (ValueError, RecursionError):
+                    return {"message": "Invalid disclosure selection."}
+                if (not inline_review or not isinstance(revealed, list)
+                        or any(not isinstance(item, str) or not REDACTED_LABEL.fullmatch(item) for item in revealed)
+                        or len(set(revealed)) != len(revealed)):
+                    return {"message": "Invalid disclosure selection."}
             with self.lock:
                 pending = self.pending.get(token)
                 if (not pending or pending[0] != owner or action not in pending[2]
@@ -221,15 +237,22 @@ class Chat:
                     return {"message": REASONS["stale_review"]}
                 if action == "edit" and not (draft or "").strip():
                     return {"message": "Enter an edited prompt."}
+                if revealed and not set(revealed) <= self.proxy.review_originals(**pending[1]).keys():
+                    return {"message": "Invalid disclosure selection."}
                 del self.pending[token]
             decision = {**pending[1], "action": action}
             if action == "edit":
                 decision["prompt"] = draft
             sent_prompt = draft if action == "edit" else pending[3]
             originals = self.proxy.review_originals(**pending[1], include_previous=True)
+            if revealed:
+                decision["revealed_labels"] = revealed
+                originals = {label: value for label, value in originals.items() if label not in revealed}
             result = self.proxy.decide(decision, inline_review=True) if inline_review else self.proxy.decide(decision)
         else:
             result = self.proxy.submit({"prompt": text})
+            with self.lock:
+                self.request_users[result["request_id"]] = owner[0]
         if result["status"] == "completed":
             return {"message": _restore_answer(result["answer"], sent_prompt, originals)}
         if result["status"] == "failed":

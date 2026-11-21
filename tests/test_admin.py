@@ -1,7 +1,9 @@
 import json
 import unittest
+from unittest.mock import patch
 from xml.etree import ElementTree
 
+from fastapi.testclient import TestClient
 import gradio as gr
 from gradio.state_holder import SessionState
 
@@ -9,6 +11,8 @@ from agenthon.pii import PIIDetector
 from agenthon.proxy import Proxy
 from agenthon.ui.admin import build_admin
 from agenthon.ui.app import build_services
+from agenthon.ui.chat import BUTTONS
+from test_chat import tagged_choice
 from test_contracts import ROOT, validator
 from test_proxy import find_names
 
@@ -20,6 +24,7 @@ TRACE = validator("trace_event")
 
 class AdminTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        self.enterContext(patch("agenthon.pii._load_name_finder", return_value=find_names))
         self.entries = {}
         self.events = {}
         with gr.Blocks(analytics_enabled=False) as self.app:
@@ -71,7 +76,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         updated = await self.trigger("tick")
         rows = updated[2]["data"]
         self.assertEqual([row[1] for row in rows], ["demo-edit", "demo-clean"])
-        self.assertEqual(rows[0], ["2026-11-21 12:01:00", "demo-edit", "Processing", "Pending", "—"])
+        self.assertEqual(rows[0], ["2026-11-21 12:01:00", "demo-edit", "Processing", "Pending", "—", "Unavailable", "—"])
         selected = await self.trigger("click", rows[1])
         self.assertIn("Failed", selected[5])
         self.assertEqual(selected[6], CASES["demo-clean"]["prompt"])
@@ -105,16 +110,26 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         }
         TRACE.validate(trace)
         self.events[case] = [trace]
+        answer = "## Delivery update\n\n- Confirm the **window**.\n\n```text\n09:00–11:00\n```"
         self.add_entry(
             case, timestamp, status="completed", risk_flag=True, route="local_simulated",
-            sent_prompt="Ask the site coordinator to confirm the delivery window.", response="Demo response",
+            sent_prompt="Ask the site coordinator to confirm the delivery window.", response=answer,
         )
         completed = await self.trigger("tick")
-        self.assertEqual(completed[2]["data"][1][2:], ["Completed", "Local (simulated with DeepSeek)", "Detected"])
+        self.assertEqual(completed[2]["data"][1][2:], [
+            "Completed", "Local (simulated with DeepSeek)", "Detected", "Unavailable", "None detected",
+        ])
         self.assertIn("PII Risk", completed[5])
         self.assertEqual(completed[6:9], [
-            CASES[case]["prompt"], self.entries[case]["sent_prompt"], "Demo response",
+            CASES[case]["prompt"], self.entries[case]["sent_prompt"], answer,
         ])
+        tick = next(event for event in self.app.config["dependencies"]
+                    if any(name == "tick" for _, name in event["targets"]))
+        response_id = tick["outputs"][8]
+        response = next(component for component in self.app.config["components"] if component["id"] == response_id)
+        self.assertEqual(response["type"], "markdown")
+        self.assertTrue(response["props"]["sanitize_html"])
+        self.assertEqual(response["props"]["buttons"], ["copy"])
         self.assertEqual(completed[9]["data"][0][1:3], ["model", "complete"])
         unchanged = await self.trigger("tick")
         self.assertEqual(unchanged[2]["__type__"], "update")
@@ -130,8 +145,8 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         review = proxy.submit({"prompt": original})
         snapshot = await self.trigger("load")
         pending_row, clean_row = snapshot[2]["data"]
-        self.assertEqual(clean_row[1:], [clean["request_id"], "Completed", "DeepSeek", "—"])
-        self.assertEqual(pending_row[1:], [review["request_id"], "Review required", "Pending", "Detected"])
+        self.assertEqual(clean_row[1:], [clean["request_id"], "Completed", "DeepSeek", "—", "Unavailable", "None detected"])
+        self.assertEqual(pending_row[1:], [review["request_id"], "Review required", "Pending", "Detected", "Unavailable", "—"])
         pending = await self.trigger("click", pending_row)
         self.assertEqual(pending[6:9], [original, "Unavailable", "Unavailable"])
 
@@ -139,7 +154,9 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
             "request_id": review["request_id"], "revision": review["revision"], "action": "local_simulated",
         })
         completed = await self.trigger("tick")
-        self.assertEqual(completed[2]["data"][0][2:], ["Completed", "Local (simulated with DeepSeek)", "Detected"])
+        self.assertEqual(completed[2]["data"][0][2:], [
+            "Completed", "Local (simulated with DeepSeek)", "Detected", "Unavailable", "None detected",
+        ])
         self.assertEqual(completed[6:9], [original, review["proposed_prompt"], "Demo response"])
         events = completed[9]["data"]
         self.assertEqual([row[2] for row in events], [e["action"] for e in proxy.trace_events(review["request_id"])])
@@ -153,3 +170,87 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(empty[2]["data"], [])
         self.assertEqual(empty[3], "No requests match these filters.")
         self.assertFalse(empty[4]["visible"])
+
+    async def test_transport_sender_and_prevented_count_survive_an_edit_and_approval(self):
+        proxy = Proxy(lambda prompt, route: "Demo response", detector=PIIDetector(find_names=find_names))
+        transport, self.app = build_services(proxy)
+        self.session = SessionState(self.app)
+        owner = {"user": "employee-42", "chat": "chat-1"}
+        case = CASES["demo-edit"]
+        with TestClient(transport) as client:
+            review = client.post("/turn", json={**owner, "prompt": case["prompt"]}).json()
+            pending = await self.trigger("load")
+            self.assertEqual(pending[2]["data"][0][-2:], ["employee-42", "—"])
+            self.assertIn("<strong>≥0</strong>", pending[10])
+
+            token = review["review"]["token"]
+            edit = f"{BUTTONS['edit']} [TDB:{token}]\n{case['edited_prompt']}\n[/TDB edit]"
+            edited = client.post("/turn", json={**owner, "prompt": edit}).json()
+            approval = tagged_choice("approve", edited["review"]["token"])
+            client.post("/turn", json={**owner, "prompt": approval}).raise_for_status()
+
+        completed = await self.trigger("tick")
+        row = completed[2]["data"][0]
+        self.assertEqual(row[-2:], ["employee-42", "None detected"])
+        self.assertIn("<strong>≥2</strong>", completed[10])
+        detail = await self.trigger("click", row)
+        self.assertIn("employee-42", detail[5])
+        self.assertIn("DeepSeek replied.", detail[5])
+        filtered = await self.trigger("input", filters=("All", "All", "Failed"))
+        self.assertEqual(filtered[2]["data"], [])
+        self.assertIn("<strong>≥2</strong>", filtered[10])
+
+    async def test_sent_prompt_shows_values_by_category_and_unconfirmed_delivery(self):
+        prompt = "Contact Jordan Miller at ops&legal@example.test."
+        self.add_entry("demo-clean", "2026-11-21T12:01:00Z", status="completed",
+                       sent_prompt=prompt, route="deepseek", response="Demo response")
+        self.add_entry("demo-local", "2026-11-21T12:00:00Z", status="failed",
+                       sent_prompt=prompt, route="local_simulated")
+        loaded = await self.trigger("load")
+        sent, failed = loaded[2]["data"]
+        self.assertEqual(sent[-1], "Name, Email")
+        self.assertEqual(failed[-1], "Name, Email (unconfirmed)")
+        detail = await self.trigger("click", sent)
+        self.assertIn("<b>Name</b> · Jordan Miller", detail[5])
+        self.assertIn("<b>Email</b> · ops&amp;legal@example.test", detail[5])
+        detail = await self.trigger("click", failed)
+        self.assertIn("Delivery to DeepSeek unconfirmed.", detail[5])
+
+    async def test_inline_approval_sends_only_revealed_pii_and_updates_metrics(self):
+        sent = []
+
+        def provider(prompt, route):
+            sent.append((prompt, route))
+            return "Demo response"
+
+        proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
+        transport, self.app = build_services(proxy)
+        self.session = SessionState(self.app)
+        owner = {"user": "employee-42", "chat": "chat-1", "message_id": "assistant-1"}
+        prompt = "Contact Jordan Miller at ops@example.test."
+        with TestClient(transport) as client:
+            review = client.post("/turn", json={**owner, "prompt": prompt}).json()
+            token = review["review"]["token"]
+            invalid = tagged_choice("approve", token, json.dumps(["[PHONE_1]"]))
+            rejected = client.post("/turn", json={**owner, "prompt": invalid, "inline_review": True})
+            self.assertIn("Invalid disclosure selection", rejected.json()["message"])
+            self.assertEqual(sent, [])
+            approval = tagged_choice("approve", token, json.dumps(["[EMAIL_1]"]))
+            accepted = client.post("/turn", json={**owner, "prompt": approval, "inline_review": True})
+            self.assertEqual(accepted.json()["message"], "Demo response")
+
+        self.assertEqual(sent, [("Contact [NAME_1] at ops@example.test.", "deepseek")])
+        completed = await self.trigger("load")
+        row = completed[2]["data"][0]
+        self.assertEqual(row[-1], "Email")
+        self.assertIn("<strong>≥1</strong>", completed[10])
+        detail = await self.trigger("click", row)
+        self.assertIn("<b>Email</b> · ops@example.test", detail[5])
+        self.assertNotIn("Jordan Miller", detail[5])
+
+    async def test_incomplete_audit_displays_available_categories(self):
+        self.add_entry("demo-clean", "2026-11-21T12:01:00Z", status="completed",
+                       sent_prompt="Contact ops@example.test.", route="deepseek", response="Demo response")
+        with patch("agenthon.pii._load_name_finder", side_effect=OSError):
+            loaded = await self.trigger("load")
+        self.assertEqual(loaded[2]["data"][0][-1], "Email (partial check)")
