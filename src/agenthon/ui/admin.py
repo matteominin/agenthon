@@ -68,25 +68,30 @@ def _request_table(rows, selected):
     return f'<table class="ledger"><thead><tr>{headings}</tr></thead><tbody>{"".join(body)}</tbody></table>'
 
 
-def _prevented_count(events):
+def _prevented_count(events, sent_pii):
     counts = Counter()
     for event in events:
         if event["agent"] == "pii" and event["action"] == "redact":
             # Revisions can detect the same values again. The largest count
             # per category is the minimum number of distinct values removed.
             counts |= Counter(event["output"].get("entity_counts", {}))
-    return counts.total()
+    disclosed = Counter(kind for kind, _ in sent_pii)
+    return (counts - disclosed).total()
 
 
-def _audit_sent_prompt(entry, scan_prompt):
+def _audit_sent_prompt(entry, scan_prompt, sent_pii):
     if entry["sent_prompt"] is None:
         return "—", (), "No final model call recorded."
     delivery = "DeepSeek replied." if entry["status"] == "completed" else "Delivery to DeepSeek unconfirmed."
+    findings = {(CATEGORIES[kind], value.casefold()): value for kind, value in sent_pii}
     try:
         result, values = scan_prompt(entry["sent_prompt"])
     except TimeoutError:
-        return "Check timed out", (), delivery
-    findings = tuple((CATEGORIES[item["type"]], values[item["label"]]) for item in result["entities"])
+        return "Check timed out", tuple((category, value) for (category, _), value in findings.items()), delivery
+    for item in result["entities"]:
+        value = values[item["label"]]
+        findings.setdefault((CATEGORIES[item["type"]], value.casefold()), value)
+    findings = tuple((category, value) for (category, _), value in findings.items())
     label = ", ".join(dict.fromkeys(category for category, _ in findings))
     if result["status"] == "uncertain" and not label:
         return "Check incomplete", findings, delivery
@@ -145,6 +150,7 @@ def build_admin(
     *,
     refresh_seconds: float = 1,
     user_for_request: Callable[[str], str | None] = lambda request_id: None,
+    sent_pii_for_request: Callable[[str], Sequence[tuple[str, str]]] = lambda request_id: (),
 ) -> None:
     """Add the admin view to the active Blocks context.
 
@@ -176,7 +182,10 @@ def build_admin(
         with gr.Row(elem_id="prompt-comparison"):
             original = gr.Textbox(label="Original prompt", interactive=False, lines=5, max_lines=12, buttons=["copy"])
             sent = gr.Textbox(label="Sent prompt", interactive=False, lines=5, max_lines=12, buttons=["copy"])
-        response = gr.Textbox(label="Model response", interactive=False, lines=4, max_lines=16, buttons=["copy"])
+        gr.Markdown("### Model response")
+        response = gr.Markdown(
+            sanitize_html=True, container=True, padding=True, max_height=360, buttons=["copy"],
+        )
         with gr.Accordion("Execution trace", open=False):
             trace = gr.Dataframe(headers=["Time (UTC)", "Agent", "Action", "Input", "Output", "Confidence"],
                                  datatype="str", value=[], interactive=False, wrap=True, buttons=[], show_label=False)
@@ -185,6 +194,7 @@ def build_admin(
 
     def refresh(request_id, last_rows, risk, severity, status, *, force=False):
         events_for = lru_cache(maxsize=None)(list_trace)
+        sent_pii_for = lru_cache(maxsize=None)(sent_pii_for_request)
         try:
             history = list_requests()
             entries = [
@@ -201,7 +211,8 @@ def build_admin(
         for entry in history:
             if entry["status"] == "completed" and entry["risk_flag"]:
                 try:
-                    prevented += _prevented_count(events_for(entry["request_id"]))
+                    request = entry["request_id"]
+                    prevented += _prevented_count(events_for(request), sent_pii_for(request))
                 except TimeoutError:
                     trace_incomplete = True
         counts = [
@@ -216,7 +227,10 @@ def build_admin(
         if trace_incomplete:
             summary_counts += " Some trace data is unavailable."
         summary_counts += "</small>"
-        audits = {entry["request_id"]: _audit_sent_prompt(entry, scan_prompt) for entry in entries}
+        audits = {
+            entry["request_id"]: _audit_sent_prompt(entry, scan_prompt, sent_pii_for(entry["request_id"]))
+            for entry in entries
+        }
         rows = _history_rows(entries, user_for_request, audits)
         table_update = _request_table(rows, request_id) if force or rows != last_rows else gr.skip()
         entry = next((entry for entry in entries if entry["request_id"] == request_id), None)

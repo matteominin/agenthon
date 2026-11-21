@@ -51,6 +51,7 @@ class Proxy:
         self._trace = TraceLog(validate_contract, trace_path)
         self._history = {}
         self._reviews = {}
+        self._sent_pii = {}
         self._lock = Lock()
 
     def submit(self, request):
@@ -79,16 +80,23 @@ class Proxy:
         validate_contract("proxy", decision, "decision")
         request_id = decision["request_id"]
         action = decision["action"]
+        revealed = set(decision.get("revealed_labels", ()))
+        sent_pii = ()
         with self._lock:
             review = self._reviews.get(request_id)
             if review is not None:
                 result, known_values = review
+                current_types = {item["label"]: item["type"] for item in result["entities"]}
                 if (decision["revision"] != result["revision"]
-                        or action not in result["allowed_actions"]):
+                        or action not in result["allowed_actions"]
+                        or not revealed <= current_types.keys()):
                     review = None
             if review is not None:
                 del self._reviews[request_id]
                 self._history[request_id]["status"] = "processing"
+                sent_pii = tuple(
+                    (kind, known_values[label]) for label, kind in current_types.items() if label in revealed
+                )
 
         if review is None:
             return self._failed(request_id, "stale_review", update_history=False)
@@ -99,7 +107,11 @@ class Proxy:
                 request_id, decision["prompt"], decision["revision"] + 1, known_values
             )
         route = "local_simulated" if action == "local_simulated" else "deepseek"
-        return self._send(request_id, result["proposed_prompt"], route)
+        prompt = _PLACEHOLDER.sub(
+            lambda match: known_values[match[0]] if match[0] in revealed else match[0],
+            result["proposed_prompt"],
+        )
+        return self._send(request_id, prompt, route, sent_pii=sent_pii)
 
     def review_originals(self, request_id, revision, *, include_previous=False):
         """Return values for the active review, including prior revisions on request."""
@@ -122,6 +134,11 @@ class Proxy:
 
     def trace_events(self, request_id=None, *, include_summary=False):
         return self._trace.events(request_id, include_summary=include_summary)
+
+    def sent_pii(self, request_id):
+        """Return explicitly disclosed values from the recorded final prompt."""
+        with self._lock:
+            return self._sent_pii.get(request_id, ())
 
     def _validated_result(self, result):
         validate_contract("proxy", result, "result")
@@ -289,10 +306,12 @@ class Proxy:
                            output={"status": "review_required", "reason": reason})
         return result
 
-    def _send(self, request_id, prompt, route):
+    def _send(self, request_id, prompt, route, *, sent_pii=()):
         metadata = {"route": route}
         with self._lock:
             self._history[request_id].update(sent_prompt=prompt, route=route)
+            if sent_pii:
+                self._sent_pii[request_id] = sent_pii
         self._trace.record(request_id, "proxy", "route", output=metadata)
 
         def call_provider():

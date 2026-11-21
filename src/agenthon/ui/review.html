@@ -43,7 +43,7 @@ footer [data-choice=local_simulated]{margin-right:auto}.muted{color:var(--quiet)
 <section class="content">
 <div class="work-area"><div class="bar"><h3 id="preview-title" $preview_hidden>Prompt preview</h3><label id="edit-label" for="draft" $edit_hidden>Edit prompt</label>$edit_button</div>
 <div id="preview" $preview_hidden>$preview</div>
-<p id="mask-help" class="hint" $hint_hidden>Click a highlighted item to reveal it. Only placeholders are sent.</p>
+<p id="mask-help" class="hint" $hint_hidden>Click an item to reveal it. Revealed values will be sent to DeepSeek if you approve. Click again to mask them.</p>
 <textarea id="draft" $edit_hidden aria-describedby="edit-help">
 $draft</textarea>
 <div id="edit-help" class="hint" $edit_hidden>Personal information is checked again before sending.</div>
@@ -54,6 +54,8 @@ $draft</textarea>
 const el=id=>document.getElementById(id);
 const draft=el('draft'), preview=el('preview'), token=document.querySelector('article').dataset.reference;
 const originals=new Map(Array.from(document.querySelectorAll('.original'),el=>[el.dataset.label,el.textContent]));
+const revealed=new Set();
+const approve=document.querySelector('[data-choice=approve]');
 const walker=document.createTreeWalker(preview,NodeFilter.SHOW_TEXT), nodes=[];
 while(walker.nextNode())nodes.push(walker.currentNode);
 for(const node of nodes){
@@ -66,8 +68,12 @@ for(const node of nodes){
  }));
 }
 preview.onclick=e=>{
- const item=e.target.closest('.mask');if(!item)return;
+ const item=e.target.closest('.mask');if(!item||approve?.disabled)return;
  const label=item.dataset.label, reveal=item.getAttribute('aria-pressed')==='false';
+ if(reveal)revealed.add(label);else revealed.delete(label);
+ if(approve)approve.querySelector('.approval-label').textContent=revealed.size
+  ?'Send with '+revealed.size+' revealed '+(revealed.size===1?'value':'values')
+  :approve.dataset.command;
  for(const b of preview.querySelectorAll('.mask')){
   if(b.dataset.label!==label)continue;
   b.textContent=reveal?originals.get(label):label;b.setAttribute('aria-pressed',String(reveal));
@@ -112,7 +118,7 @@ document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{
  }
  const fallback=setTimeout(unavailable,800);
  window.addEventListener('message',onApproval);
- parent.postMessage({type:'tdb:approve',token},'*');
+ parent.postMessage({type:'tdb:approve',token,revealed:Array.from(revealed)},'*');
 });
 draft.oninput=()=>draft.setCustomValidity('');
 new ResizeObserver(()=>parent.postMessage({type:'iframe:height',height:document.body.scrollHeight},'*')).observe(document.body);

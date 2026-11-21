@@ -24,7 +24,7 @@ La dashboard associa l’ID utente alla richiesta in memoria lato chat, ricontro
 
 ## D5 — UI riusabile
 
-Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per l'approvazione con un clic, la Pipe registra nel browser un comando associato al messaggio assistente e alla revisione. Open WebUI aggiorna quel messaggio mantenendo l'iframe in sandbox fino alla risposta.
+Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per l'approvazione con un clic, la Pipe registra nel browser un comando associato al messaggio assistente e alla revisione. Open WebUI aggiorna quel messaggio mantenendo l'iframe in sandbox fino alla risposta. Il proxy convalida i segnaposto rivelati contro la revisione attiva e ripristina solo i valori selezionati per l'approvazione DeepSeek.
 
 ## D6 — RAG dopo il percorso P0
 

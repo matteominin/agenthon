@@ -12,6 +12,7 @@ from agenthon.proxy import Proxy
 from agenthon.ui.admin import build_admin
 from agenthon.ui.app import build_services
 from agenthon.ui.chat import BUTTONS
+from test_chat import tagged_choice
 from test_contracts import ROOT, validator
 from test_proxy import find_names
 
@@ -109,9 +110,10 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         }
         TRACE.validate(trace)
         self.events[case] = [trace]
+        answer = "## Delivery update\n\n- Confirm the **window**.\n\n```text\n09:00–11:00\n```"
         self.add_entry(
             case, timestamp, status="completed", risk_flag=True, route="local_simulated",
-            sent_prompt="Ask the site coordinator to confirm the delivery window.", response="Demo response",
+            sent_prompt="Ask the site coordinator to confirm the delivery window.", response=answer,
         )
         completed = await self.trigger("tick")
         self.assertEqual(completed[2]["data"][1][2:], [
@@ -119,8 +121,15 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         ])
         self.assertIn("PII Risk", completed[5])
         self.assertEqual(completed[6:9], [
-            CASES[case]["prompt"], self.entries[case]["sent_prompt"], "Demo response",
+            CASES[case]["prompt"], self.entries[case]["sent_prompt"], answer,
         ])
+        tick = next(event for event in self.app.config["dependencies"]
+                    if any(name == "tick" for _, name in event["targets"]))
+        response_id = tick["outputs"][8]
+        response = next(component for component in self.app.config["components"] if component["id"] == response_id)
+        self.assertEqual(response["type"], "markdown")
+        self.assertTrue(response["props"]["sanitize_html"])
+        self.assertEqual(response["props"]["buttons"], ["copy"])
         self.assertEqual(completed[9]["data"][0][1:3], ["model", "complete"])
         unchanged = await self.trigger("tick")
         self.assertEqual(unchanged[2]["__type__"], "update")
@@ -206,6 +215,38 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<b>Email</b> · ops&amp;legal@example.test", detail[5])
         detail = await self.trigger("click", failed)
         self.assertIn("Delivery to DeepSeek unconfirmed.", detail[5])
+
+    async def test_inline_approval_sends_only_revealed_pii_and_updates_metrics(self):
+        sent = []
+
+        def provider(prompt, route):
+            sent.append((prompt, route))
+            return "Demo response"
+
+        proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
+        transport, self.app = build_services(proxy)
+        self.session = SessionState(self.app)
+        owner = {"user": "employee-42", "chat": "chat-1", "message_id": "assistant-1"}
+        prompt = "Contact Jordan Miller at ops@example.test."
+        with TestClient(transport) as client:
+            review = client.post("/turn", json={**owner, "prompt": prompt}).json()
+            token = review["approval"]["token"]
+            invalid = tagged_choice("approve", token, json.dumps(["[PHONE_1]"]))
+            rejected = client.post("/turn", json={**owner, "prompt": invalid, "inline_approval": True})
+            self.assertIn("Invalid disclosure selection", rejected.json()["message"])
+            self.assertEqual(sent, [])
+            approval = tagged_choice("approve", token, json.dumps(["[EMAIL_1]"]))
+            accepted = client.post("/turn", json={**owner, "prompt": approval, "inline_approval": True})
+            self.assertEqual(accepted.json()["message"], "Demo response")
+
+        self.assertEqual(sent, [("Contact [NAME_1] at ops@example.test.", "deepseek")])
+        completed = await self.trigger("load")
+        row = completed[2]["data"][0]
+        self.assertEqual(row[-1], "Email")
+        self.assertIn("<strong>≥1</strong>", completed[10])
+        detail = await self.trigger("click", row)
+        self.assertIn("<b>Email</b> · ops@example.test", detail[5])
+        self.assertNotIn("Jordan Miller", detail[5])
 
     async def test_incomplete_audit_displays_available_categories(self):
         self.add_entry("demo-clean", "2026-11-21T12:01:00Z", status="completed",

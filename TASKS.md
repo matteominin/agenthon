@@ -53,8 +53,8 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Scope — `src/agenthon/ui/admin.py`, `tests/test_admin.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — Tutte le richieste compaiono subito. Il dettaglio mostra prompt originale, prompt inviato e risposta quando disponibili. Il flag si attiva al primo rilevamento PII e resta visibile dopo l'esecuzione.
-- Delivery notes — Dashboard in `src/agenthon/ui/admin.py` con cronologia, filtri, trace, conteggio minimo dei PII protetti e dettaglio dei PII rilevati nei prompt finali.
-  L’ID utente Open WebUI è associato alla richiesta in memoria da `Chat` e letto dalla dashboard tramite `build_services`.
+- Delivery notes — Dashboard in `src/agenthon/ui/admin.py` con cronologia, filtri, trace, metriche PII e risposta del modello in Markdown.
+  La conferma DeepSeek ripristina solo i valori rivelati. La dashboard mostra i valori inviati e li sottrae dal conteggio protetto.
   Eseguire `PYTHONPATH=src:tests uv run --no-project --with gradio==6.32.0 --with jsonschema --with markdown-it-py -- python -m unittest test_admin test_chat`.
 
 ## T7 — Entrypoint e prova demo (UI + Core) · TODO

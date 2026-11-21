@@ -39,6 +39,7 @@ def build_services(proxy):
         build_admin(
             dashboard, proxy.history, partial(proxy.trace_events, include_summary=True),
             user_for_request=chat.request_user,
+            sent_pii_for_request=proxy.sent_pii,
         )
     return transport, dashboard
 

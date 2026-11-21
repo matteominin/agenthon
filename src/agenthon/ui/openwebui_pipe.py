@@ -11,10 +11,10 @@ from urllib.request import Request, urlopen
 
 
 # Only the trusted Pipe can register an approval. The sandboxed frame can
-# request this one prebuilt command, without supplying any prompt text.
-APPROVAL_BRIDGE = Template("""
+# request this one prebuilt command with placeholder IDs.
+APPROVAL_BRIDGE = Template(r"""
 const approval = $approval;
-const key = Symbol.for('tdb.review.approvals');
+const key = Symbol.for('tdb.review.disclosureApprovals');
 if (!window[key]) {
     const approvals = new Map();
     window[key] = approvals;
@@ -28,6 +28,13 @@ if (!window[key]) {
             candidate.getAttribute('srcdoc').includes('data-reference="' + token + '"')
         );
         if (!frame || (frame.closest('[data-chat]')?.getAttribute('data-chat') ?? 'main') !== 'main') return;
+        const revealed = event.data.revealed ?? [];
+        if (!Array.isArray(revealed) || !revealed.every(label =>
+            typeof label === 'string' && /^\[(NAME|EMAIL|PHONE|SSN|CONTRACT_ID)_[1-9][0-9]*\]$$/.test(label))) return;
+        const marker = String.fromCodePoint(0xe0001);
+        const command = revealed.length
+            ? payload.tdb_approval.replace(marker, () => '\n\n' + JSON.stringify(revealed) + marker)
+            : payload.tdb_approval;
         approvals.delete(token);
         const notify = type => event.source.postMessage({type, token}, '*');
         notify('tdb:approval-dispatched');
@@ -36,7 +43,7 @@ if (!window[key]) {
             const response = await fetch('/api/chat/completions', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', ...(auth && {Authorization: 'Bearer ' + auth})},
-                body: JSON.stringify(payload),
+                body: JSON.stringify({...payload, tdb_approval: command}),
             });
             if (!response.ok) throw new Error('Approval could not be submitted');
         } catch {
