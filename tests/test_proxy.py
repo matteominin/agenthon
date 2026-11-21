@@ -9,7 +9,7 @@ from threading import Event
 import unittest
 from unittest.mock import patch
 
-from agenthon.models import DeepSeekProvider, ModelError
+from agenthon.models import RESPONSE_SYSTEM_PROMPT, DeepSeekProvider, ModelError
 from agenthon.pii import PIIDetector
 from agenthon.proxy import Proxy
 
@@ -145,6 +145,7 @@ class ProxyTests(unittest.TestCase):
 
     def test_rephrase_cannot_remove_placeholders_or_reinsert_pii(self):
         for transform in (
+            lambda prompt: prompt + "\n",
             lambda prompt: prompt.replace("[NAME_1]", "the lead"),
             lambda prompt: f"{prompt}\nJordan Miller",
         ):
@@ -292,8 +293,11 @@ class DeepSeekTests(unittest.TestCase):
             self.assertEqual(timeout, 3)
             payload = json.loads(request.data)
             self.assertEqual(payload["model"], "test-model")
+            self.assertNotIn("response_format", payload)
+            self.assertIn("Give the requested answer or deliverable first", RESPONSE_SYSTEM_PROMPT)
+            self.assertIn("Use concise, concrete language", RESPONSE_SYSTEM_PROMPT)
             self.assertEqual(payload["messages"], [
-                {"role": "system", "content": "Respond in English."},
+                {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
                 {"role": "user", "content": "  Draft a message for [NAME_1].\n"},
             ])
             return FakeResponse(b'{"choices":[{"message":{"content":"Hello."}}]}')
@@ -303,6 +307,106 @@ class DeepSeekTests(unittest.TestCase):
             for route in ("deepseek", "local_simulated"):
                 self.assertEqual(provider("  Draft a message for [NAME_1].\n", route), "Hello.")
             self.assertEqual(transport.call_count, 2)
+
+    def test_deepseek_rephrases_and_suggests_from_redacted_input_before_review(self):
+        case = CASES[2]
+        proposal = (
+            "Draft a brief message to [NAME_1] asking for the rollout status. "
+            "Recipient address for reference: [EMAIL_1]."
+        )
+        rewrite = {
+            "proposed_prompt": proposal,
+            "changed": True,
+            "confidence": 0.95,
+            "missing_information": [{
+                "label": "[EMAIL_1]",
+                "detail": "The recipient address is hidden.",
+                "limitation": "The draft can be written using the placeholder.",
+            }],
+        }
+
+        suggestions = {
+            "confidence": 0.95,
+            "items": [
+                {"label": "[NAME_1]", "severity": "medium", "message": "Use the recipient placeholder."},
+                {
+                    "label": "[EMAIL_1]",
+                    "severity": "medium",
+                    "message": "The message can be drafted with the address hidden.",
+                },
+                {
+                    "action": "add_context",
+                    "message": "If the rollout spans several phases, include the phase that needs an update.",
+                },
+            ],
+        }
+        unsafe_suggestions = {
+            "confidence": 0.95,
+            "items": [{"message": "Address the message to maya.brooks@example.test."}],
+        }
+
+        def completion(content):
+            return io.BytesIO(json.dumps({
+                "choices": [{"message": {"content": content}}],
+            }).encode())
+
+        provider = DeepSeekProvider(api_key="test-key")
+        proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
+        with patch("agenthon.models.urlopen", side_effect=[
+            completion("invalid JSON"),
+            completion(json.dumps(rewrite)),
+            completion(json.dumps(unsafe_suggestions)),
+            completion(json.dumps(suggestions)),
+            completion("Demo answer."),
+        ]) as transport:
+            review = proxy.submit({"prompt": case["prompt"]})
+            self.assertEqual(transport.call_count, 4)
+            self.assertEqual(review["status"], "review_required")
+            self.assertEqual(review["proposed_prompt"], proposal)
+            self.assertEqual(review["suggestions"], suggestions["items"])
+            suggestion_events = [
+                event["action"] for event in proxy.trace_events() if event["agent"] == "suggestion"
+            ]
+            self.assertEqual(suggestion_events, ["retry", "suggest"])
+            self.assertIsNone(proxy.history()[0]["sent_prompt"])
+
+            for index, call in enumerate(transport.call_args_list):
+                payload = json.loads(call.args[0].data)
+                self.assertEqual(payload["response_format"], {"type": "json_object"})
+                user_content = payload["messages"][1]["content"]
+                self.assertNotIn("Maya Brooks", user_content)
+                self.assertNotIn("maya.brooks@example.test", user_content)
+                data = json.loads(user_content)
+                entities = [
+                    {"label": "[NAME_1]", "type": "name"},
+                    {"label": "[EMAIL_1]", "type": "email"},
+                ]
+                system_prompt = payload["messages"][0]["content"]
+                if index < 2:
+                    self.assertIn("Rewrite an already redacted employee request", system_prompt)
+                    self.assertEqual(data, {
+                        "prompt": (
+                            "Draft a message asking [NAME_1] for an update on the rollout. "
+                            "Her email address is [EMAIL_1]."
+                        ),
+                        "entities": entities,
+                    })
+                else:
+                    self.assertIn("Write concise review notices and optional actions", system_prompt)
+                    self.assertEqual(data, {
+                        "proposed_prompt": proposal,
+                        "entities": entities,
+                        "missing_information": rewrite["missing_information"],
+                    })
+
+            result = proxy.decide(choice(review))
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(transport.call_count, 5)
+            payload = json.loads(transport.call_args.args[0].data)
+            self.assertEqual(payload["messages"], [
+                {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
+                {"role": "user", "content": proposal},
+            ])
 
     def test_missing_api_key_fails_before_network_access(self):
         with patch("agenthon.models.urlopen") as transport:
@@ -320,6 +424,7 @@ class DeepSeekTests(unittest.TestCase):
                 self.assertEqual(first["status"], case["expected"][0], first.get("reason"))
                 result = first
                 if "decision" in case:
+                    self.assertTrue(first["suggestions"], first.get("reason"))
                     extra = {"prompt": case["edited_prompt"]} if "edited_prompt" in case else {}
                     result = proxy.decide(choice(first, case["decision"], **extra))
                 self.assertEqual(result["status"], case["expected"][-1], result.get("reason"))
