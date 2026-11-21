@@ -20,6 +20,8 @@ Il proxy conserva mappa dei valori, testo e risposte in memoria. La mappa scade 
 
 Il proxy consuma atomicamente la coppia `request_id` e `revision` prima del ricontrollo o dell’invio, così ogni revisione può produrre un solo invio.
 
+La dashboard associa l’ID utente alla richiesta in memoria lato chat, ricontrolla localmente i prompt finali e calcola un minimo di valori protetti sulle richieste completate usando il massimo per categoria tra le revisioni.
+
 ## D5 — UI riusabile
 
 Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per l'approvazione con un clic, la Pipe registra nel browser un comando associato al messaggio assistente e alla revisione. Open WebUI aggiorna quel messaggio mantenendo l'iframe in sandbox fino alla risposta.

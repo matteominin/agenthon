@@ -1,16 +1,20 @@
 """Administrator request history and trace details for the TDB demo."""
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
+from functools import lru_cache
 from html import escape
 import json
 
 import gradio as gr
 
+from agenthon.pii import PIIDetector
 from agenthon.suggestion import _SEVERITY
+from agenthon.ui.chat import CATEGORIES
 
 
-HEADERS = ["Time (UTC)", "Request ID", "Status", "Route", "PII Risk"]
+HEADERS = ["Time (UTC)", "Request ID", "Status", "Route", "PII Risk", "User ID", "PII in final prompt"]
 STATUS = {
     "processing": "Processing",
     "review_required": "Review required",
@@ -28,7 +32,7 @@ def _timestamp(value):
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
-def _history_rows(entries):
+def _history_rows(entries, user_for_request, audits):
     ordered = sorted(entries, key=lambda entry: _timestamp(entry["timestamp"]), reverse=True)
     return [
         [
@@ -37,6 +41,8 @@ def _history_rows(entries):
             STATUS[entry["status"]],
             "—" if entry["status"] == "failed" and entry["route"] is None else ROUTE[entry["route"]],
             "Detected" if entry["risk_flag"] else "—",
+            user_for_request(entry["request_id"]) or "Unavailable",
+            audits[entry["request_id"]][0],
         ]
         for entry in ordered
     ]
@@ -44,7 +50,7 @@ def _history_rows(entries):
 
 def _request_table(rows, selected):
     body = []
-    for stamp, request_id, status, route, risk in rows:
+    for stamp, request_id, status, route, risk, user, pii in rows:
         rid = escape(request_id, quote=True)
         state = status.lower().replace(" ", "-")
         body.append(
@@ -54,10 +60,51 @@ def _request_table(rows, selected):
             f'<td data-title="Status"><span class="state {state}">{escape(status)}</span></td>'
             f'<td data-title="Route">{escape(route)}</td>'
             f'<td data-title="PII risk"><span class="{"risk" if risk == "Detected" else "quiet"}">{risk}</span></td>'
+            f'<td data-title="User ID" style="overflow-wrap:anywhere">{escape(user)}</td>'
+            f'<td data-title="PII in final prompt">{escape(pii)}</td>'
             '</tr>'
         )
     headings = "".join(f'<th scope="col">{label}</th>' for label in HEADERS)
     return f'<table class="ledger"><thead><tr>{headings}</tr></thead><tbody>{"".join(body)}</tbody></table>'
+
+
+def _prevented_count(events):
+    counts = Counter()
+    for event in events:
+        if event["agent"] == "pii" and event["action"] == "redact":
+            # Revisions can detect the same values again. The largest count
+            # per category is the minimum number of distinct values removed.
+            counts |= Counter(event["output"].get("entity_counts", {}))
+    return counts.total()
+
+
+def _audit_sent_prompt(entry, scan_prompt):
+    if entry["sent_prompt"] is None:
+        return "—", (), "No final model call recorded."
+    delivery = "DeepSeek replied." if entry["status"] == "completed" else "Delivery to DeepSeek unconfirmed."
+    try:
+        result, values = scan_prompt(entry["sent_prompt"])
+    except TimeoutError:
+        return "Check timed out", (), delivery
+    findings = tuple((CATEGORIES[item["type"]], values[item["label"]]) for item in result["entities"])
+    label = ", ".join(dict.fromkeys(category for category, _ in findings))
+    if result["status"] == "uncertain" and not label:
+        return "Check incomplete", findings, delivery
+    if result["status"] == "uncertain":
+        label = f"{label} (partial check)"
+    if findings and entry["status"] != "completed":
+        label = f"{label} (unconfirmed)"
+    return label or "None detected", findings, delivery
+
+
+def _sent_prompt_details(audit):
+    label, findings, delivery = audit
+    items = "".join(
+        f'<li style="overflow-wrap:anywhere"><b>{escape(category)}</b> · {escape(value)}</li>'
+        for category, value in findings
+    )
+    values = f"<ul>{items}</ul>" if items else ""
+    return f"<section><h3>PII in final prompt</h3><p>{escape(label)} · {escape(delivery)}</p>{values}</section>"
 
 
 def _has_severity(events, severity):
@@ -97,6 +144,7 @@ def build_admin(
     list_trace: Callable[[str], Sequence[dict]],
     *,
     refresh_seconds: float = 1,
+    user_for_request: Callable[[str], str | None] = lambda request_id: None,
 ) -> None:
     """Add the admin view to the active Blocks context.
 
@@ -105,6 +153,7 @@ def build_admin(
     """
     selected = gr.State(None)
     previous_rows = gr.State([])
+    scan_prompt = lru_cache(maxsize=128)(PIIDetector().detect)
     timer = gr.Timer(refresh_seconds)
     gr.Markdown("# Request history", elem_classes=["view-title"])
     totals = gr.HTML(elem_id="request-counts", apply_default_css=False, js_on_load=None)
@@ -135,26 +184,40 @@ def build_admin(
     outputs = [selected, previous_rows, table, notice, detail, summary, original, sent, response, trace, totals]
 
     def refresh(request_id, last_rows, risk, severity, status, *, force=False):
+        events_for = lru_cache(maxsize=None)(list_trace)
         try:
             history = list_requests()
             entries = [
                 entry for entry in history
                 if (risk in (None, "All") or entry["risk_flag"] == (risk == "Detected"))
                 and (status in (None, "All") or STATUS[entry["status"]] == status)
-                and (severity in (None, "All") or _has_severity(list_trace(entry["request_id"]), severity.lower()))
+                and (severity in (None, "All") or _has_severity(events_for(entry["request_id"]), severity.lower()))
             ]
         except TimeoutError:
             return (gr.skip(),) * 3 + ("Request history timed out. Retrying…",) + (gr.skip(),) * 7
 
+        prevented = 0
+        trace_incomplete = False
+        for entry in history:
+            if entry["status"] == "completed" and entry["risk_flag"]:
+                try:
+                    prevented += _prevented_count(events_for(entry["request_id"]))
+                except TimeoutError:
+                    trace_incomplete = True
         counts = [
+            ("PII values kept off the internet", f"≥{prevented}"),
             ("Total requests", len(history)),
             ("Awaiting review", sum(e["status"] == "review_required" for e in history)),
             ("PII risk", sum(e["risk_flag"] for e in history)),
         ]
-        summary_counts = '<div class="counts">' + "".join(
+        summary_counts = '<div class="counts" style="grid-template-columns:repeat(auto-fit,minmax(min(125px,100%),1fr))">' + "".join(
             f"<div><span>{label}</span><strong>{count}</strong></div>" for label, count in counts
-        ) + "</div>"
-        rows = _history_rows(entries)
+        ) + "</div><small>Minimum from recorded redactions on completed requests."
+        if trace_incomplete:
+            summary_counts += " Some trace data is unavailable."
+        summary_counts += "</small>"
+        audits = {entry["request_id"]: _audit_sent_prompt(entry, scan_prompt) for entry in entries}
+        rows = _history_rows(entries, user_for_request, audits)
         table_update = _request_table(rows, request_id) if force or rows != last_rows else gr.skip()
         entry = next((entry for entry in entries if entry["request_id"] == request_id), None)
         if entry is None:
@@ -167,9 +230,11 @@ def build_admin(
         heading = (
             f'<div class="detail-head"><div><h2>Request details</h2><code>{escape(request_id)}</code></div>'
             f'<div><span class="state {entry["status"].replace("_", "-")}">{STATUS[entry["status"]]}</span> {badge}</div></div>'
+            f'<p style="overflow-wrap:anywhere">User ID · {escape(user_for_request(request_id) or "Unavailable")}</p>'
+            + _sent_prompt_details(audits[request_id])
         )
         try:
-            events = _trace_rows(list_trace(request_id))
+            events = _trace_rows(events_for(request_id))
             message = ""
         except TimeoutError:
             events = []

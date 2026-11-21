@@ -197,7 +197,12 @@ class Chat:
     def __init__(self, proxy):
         self.proxy = proxy
         self.pending = {}
+        self.request_users = {}
         self.lock = Lock()
+
+    def request_user(self, request_id):
+        with self.lock:
+            return self.request_users.get(request_id)
 
     def turn(self, owner, text, *, message_id=None, inline_approval=False):
         command = _parse_command(text)
@@ -225,6 +230,8 @@ class Chat:
             result = self.proxy.decide(decision)
         else:
             result = self.proxy.submit({"prompt": text})
+            with self.lock:
+                self.request_users[result["request_id"]] = owner[0]
         if result["status"] == "completed":
             return {"message": _restore_answer(result["answer"], sent_prompt, originals)}
         if result["status"] == "failed":

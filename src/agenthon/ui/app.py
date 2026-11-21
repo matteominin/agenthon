@@ -36,7 +36,10 @@ def build_services(proxy):
 
     with gr.Blocks(title="TDB · Request history", analytics_enabled=False) as dashboard:
         gr.HTML('<header><b>TDB</b><span>Privacy administration</span></header>', elem_id="masthead", apply_default_css=False, js_on_load=None)
-        build_admin(dashboard, proxy.history, partial(proxy.trace_events, include_summary=True))
+        build_admin(
+            dashboard, proxy.history, partial(proxy.trace_events, include_summary=True),
+            user_for_request=chat.request_user,
+        )
     return transport, dashboard
 
 

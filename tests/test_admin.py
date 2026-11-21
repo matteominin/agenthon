@@ -1,7 +1,9 @@
 import json
 import unittest
+from unittest.mock import patch
 from xml.etree import ElementTree
 
+from fastapi.testclient import TestClient
 import gradio as gr
 from gradio.state_holder import SessionState
 
@@ -9,6 +11,7 @@ from agenthon.pii import PIIDetector
 from agenthon.proxy import Proxy
 from agenthon.ui.admin import build_admin
 from agenthon.ui.app import build_services
+from agenthon.ui.chat import BUTTONS
 from test_contracts import ROOT, validator
 from test_proxy import find_names
 
@@ -20,6 +23,7 @@ TRACE = validator("trace_event")
 
 class AdminTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        self.enterContext(patch("agenthon.pii._load_name_finder", return_value=find_names))
         self.entries = {}
         self.events = {}
         with gr.Blocks(analytics_enabled=False) as self.app:
@@ -71,7 +75,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         updated = await self.trigger("tick")
         rows = updated[2]["data"]
         self.assertEqual([row[1] for row in rows], ["demo-edit", "demo-clean"])
-        self.assertEqual(rows[0], ["2026-11-21 12:01:00", "demo-edit", "Processing", "Pending", "—"])
+        self.assertEqual(rows[0], ["2026-11-21 12:01:00", "demo-edit", "Processing", "Pending", "—", "Unavailable", "—"])
         selected = await self.trigger("click", rows[1])
         self.assertIn("Failed", selected[5])
         self.assertEqual(selected[6], CASES["demo-clean"]["prompt"])
@@ -110,7 +114,9 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
             sent_prompt="Ask the site coordinator to confirm the delivery window.", response="Demo response",
         )
         completed = await self.trigger("tick")
-        self.assertEqual(completed[2]["data"][1][2:], ["Completed", "Local (simulated with DeepSeek)", "Detected"])
+        self.assertEqual(completed[2]["data"][1][2:], [
+            "Completed", "Local (simulated with DeepSeek)", "Detected", "Unavailable", "None detected",
+        ])
         self.assertIn("PII Risk", completed[5])
         self.assertEqual(completed[6:9], [
             CASES[case]["prompt"], self.entries[case]["sent_prompt"], "Demo response",
@@ -130,8 +136,8 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         review = proxy.submit({"prompt": original})
         snapshot = await self.trigger("load")
         pending_row, clean_row = snapshot[2]["data"]
-        self.assertEqual(clean_row[1:], [clean["request_id"], "Completed", "DeepSeek", "—"])
-        self.assertEqual(pending_row[1:], [review["request_id"], "Review required", "Pending", "Detected"])
+        self.assertEqual(clean_row[1:], [clean["request_id"], "Completed", "DeepSeek", "—", "Unavailable", "None detected"])
+        self.assertEqual(pending_row[1:], [review["request_id"], "Review required", "Pending", "Detected", "Unavailable", "—"])
         pending = await self.trigger("click", pending_row)
         self.assertEqual(pending[6:9], [original, "Unavailable", "Unavailable"])
 
@@ -139,7 +145,9 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
             "request_id": review["request_id"], "revision": review["revision"], "action": "local_simulated",
         })
         completed = await self.trigger("tick")
-        self.assertEqual(completed[2]["data"][0][2:], ["Completed", "Local (simulated with DeepSeek)", "Detected"])
+        self.assertEqual(completed[2]["data"][0][2:], [
+            "Completed", "Local (simulated with DeepSeek)", "Detected", "Unavailable", "None detected",
+        ])
         self.assertEqual(completed[6:9], [original, review["proposed_prompt"], "Demo response"])
         events = completed[9]["data"]
         self.assertEqual([row[2] for row in events], [e["action"] for e in proxy.trace_events(review["request_id"])])
@@ -153,3 +161,55 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(empty[2]["data"], [])
         self.assertEqual(empty[3], "No requests match these filters.")
         self.assertFalse(empty[4]["visible"])
+
+    async def test_transport_sender_and_prevented_count_survive_an_edit_and_approval(self):
+        proxy = Proxy(lambda prompt, route: "Demo response", detector=PIIDetector(find_names=find_names))
+        transport, self.app = build_services(proxy)
+        self.session = SessionState(self.app)
+        owner = {"user": "employee-42", "chat": "chat-1"}
+        case = CASES["demo-edit"]
+        with TestClient(transport) as client:
+            review = client.post("/turn", json={**owner, "prompt": case["prompt"]}).json()
+            pending = await self.trigger("load")
+            self.assertEqual(pending[2]["data"][0][-2:], ["employee-42", "—"])
+            self.assertIn("<strong>≥0</strong>", pending[10])
+
+            token = review["approval"]["token"]
+            edit = f"{BUTTONS['edit']} [TDB:{token}]\n{case['edited_prompt']}\n[/TDB edit]"
+            edited = client.post("/turn", json={**owner, "prompt": edit}).json()
+            approval = edited["approval"]["text"]
+            client.post("/turn", json={**owner, "prompt": approval}).raise_for_status()
+
+        completed = await self.trigger("tick")
+        row = completed[2]["data"][0]
+        self.assertEqual(row[-2:], ["employee-42", "None detected"])
+        self.assertIn("<strong>≥2</strong>", completed[10])
+        detail = await self.trigger("click", row)
+        self.assertIn("employee-42", detail[5])
+        self.assertIn("DeepSeek replied.", detail[5])
+        filtered = await self.trigger("input", filters=("All", "All", "Failed"))
+        self.assertEqual(filtered[2]["data"], [])
+        self.assertIn("<strong>≥2</strong>", filtered[10])
+
+    async def test_sent_prompt_shows_values_by_category_and_unconfirmed_delivery(self):
+        prompt = "Contact Jordan Miller at ops&legal@example.test."
+        self.add_entry("demo-clean", "2026-11-21T12:01:00Z", status="completed",
+                       sent_prompt=prompt, route="deepseek", response="Demo response")
+        self.add_entry("demo-local", "2026-11-21T12:00:00Z", status="failed",
+                       sent_prompt=prompt, route="local_simulated")
+        loaded = await self.trigger("load")
+        sent, failed = loaded[2]["data"]
+        self.assertEqual(sent[-1], "Name, Email")
+        self.assertEqual(failed[-1], "Name, Email (unconfirmed)")
+        detail = await self.trigger("click", sent)
+        self.assertIn("<b>Name</b> · Jordan Miller", detail[5])
+        self.assertIn("<b>Email</b> · ops&amp;legal@example.test", detail[5])
+        detail = await self.trigger("click", failed)
+        self.assertIn("Delivery to DeepSeek unconfirmed.", detail[5])
+
+    async def test_incomplete_audit_displays_available_categories(self):
+        self.add_entry("demo-clean", "2026-11-21T12:01:00Z", status="completed",
+                       sent_prompt="Contact ops@example.test.", route="deepseek", response="Demo response")
+        with patch("agenthon.pii._load_name_finder", side_effect=OSError):
+            loaded = await self.trigger("load")
+        self.assertEqual(loaded[2]["data"][0][-1], "Email (partial check)")
