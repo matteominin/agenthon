@@ -3,7 +3,7 @@
   --ink:#173631; --muted:#506963; --line:#cfddd7; --paper:#fff;
   --wash:#f4f8f5; --green:#12644d; --tint:#e4f2e9; --amber:#7c460b; --sand:#fff0d8;
   --red:#932e34; --pink:#fce8ea;
-  max-width:1180px!important; margin-inline:auto!important; padding:0 clamp(14px,3vw,40px) 48px!important;
+  width:100%!important; min-width:0!important; box-sizing:border-box; max-width:1180px!important; margin-inline:auto!important; padding:0 clamp(14px,3vw,40px) 48px!important;
   color:var(--ink);
 }
 .dark .gradio-container, .gradio-container.dark {
