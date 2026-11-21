@@ -23,8 +23,9 @@ Read other files only when needed. Do not scan the whole repo.
 ## Git
 - Branch per task: `task/T<id>-<short-name>`. Never commit directly to `dev` or `main`.
 - Commit small and often. Message format: `T<id>: short description`.
-- Do NOT run `git push`, `git pull`, `git rebase`, `git merge`, `git reset --hard`,
-  `git clean`, or switch/delete branches. I handle remote and integration myself.
+- Push only when requested. Use `dev` as the default destination. Push to `main` only when I explicitly request `main`.
+- Switch branches or integrate changes only when I request it.
+- Do NOT run `git pull`, `git rebase`, `git reset --hard`, `git clean`, or delete branches.
 - Do not rewrite history. Do not touch other people's branches.
 - Never commit secrets, `.env`, API keys, or large generated files. Keep `.env.example` updated.
 
