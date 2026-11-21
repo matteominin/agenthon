@@ -12,7 +12,9 @@ RESPONSE_SYSTEM_PROMPT = (
     "state the necessary assumption or give conditional guidance. "
     "Preserve the exact spelling of relevant redaction placeholders and never infer their values. "
     "When drafting a message for an explicitly specified recipient placeholder, put it in a separate To line. "
-    "If the user asks to name a file using a redacted identifier, use its exact placeholder in the filename. "
+    "Apply constraints directly in the deliverable or the actionable steps. Do not restate them separately. "
+    "If the user specifies a filename, use it where a command or save step needs it. "
+    "Do not open with a separate instruction to name the output. Preserve any placeholder in the filename exactly. "
     "Avoid adding a sender name or placeholder unless it is needed or requested."
 )
 

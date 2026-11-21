@@ -44,7 +44,7 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Scope — `src/agenthon/ui/chat.py`, `src/agenthon/ui/openwebui_pipe.py`, `tests/test_chat.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — L'anteprima è editabile, distingue i livelli di gravità. La scheda mostra il riquadro delle azioni suggerite solo quando ci sono azioni per dettagli ad alto impatto. Le tre azioni di revisione usano il proxy e mostrano revisione, errore o risposta in chat.
-- Delivery notes — Pipe Open WebUI in `src/agenthon/ui/openwebui_pipe.py`, anteprima Markdown interattiva ed editor in `src/agenthon/ui/review.html`. La conferma nasconde il riferimento tecnico. La chat ripristina i valori associati ai segnaposto nel testo della risposta e conserva il Markdown.
+- Delivery notes — Pipe Open WebUI in `src/agenthon/ui/openwebui_pipe.py`, anteprima Markdown interattiva ed editor in `src/agenthon/ui/review.html`. La conferma nasconde il riferimento tecnico. La chat ripristina i segnaposto nel Markdown e usa i nomi file richiesti nei passaggi operativi, senza ripetere l'istruzione introduttiva.
   I test verificano i quattro casi demo e l'aggiunta di una nuova email durante la modifica, con il proxy e un provider di test.
   Eseguire `PYTHONPATH=src uv run --no-project --with markdown-it-py --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
 

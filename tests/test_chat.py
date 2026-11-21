@@ -140,7 +140,11 @@ class ChatTests(unittest.TestCase):
     def test_contract_id_is_reviewed_and_restored_in_the_filename(self):
         contract_id = "837xy2789c2c2kl"
         prompt = f'Convert my contract with id "{contract_id}" from {contract_id}.jpg to PDF.'
-        answer = "Run magick [CONTRACT_ID_1].jpg [CONTRACT_ID_1].pdf."
+        answer = (
+            "Name the output exactly `[CONTRACT_ID_1].pdf`.\n\n"
+            "**Convert the file:**\n\n"
+            "```sh\nmagick [CONTRACT_ID_1].jpg [CONTRACT_ID_1].pdf\n```"
+        )
 
         def provider(text, route):
             self.sent.append((text, route))
@@ -156,12 +160,15 @@ class ChatTests(unittest.TestCase):
         token, = chat.pending
         response = chat.turn(OWNER, tagged_choice("approve", token))["message"]
         self.assertIn(f"magick {contract_id}.jpg {contract_id}.pdf", response)
+        self.assertTrue(response.startswith("**Convert the file:**"))
+        self.assertNotIn("Name the output", response)
         self.assertEqual(self.sent, [(
             'Convert my contract with id "[CONTRACT_ID_1]" from [CONTRACT_ID_1].jpg to PDF.',
             "deepseek",
         )])
         request = proxy.history()[0]
         self.assertTrue(request["risk_flag"])
+        self.assertEqual(request["response"], answer)
         self.assertNotIn(contract_id, json.dumps(proxy.trace_events(request["request_id"])))
 
     def test_review_lists_originals_and_renders_safe_markdown(self):

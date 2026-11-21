@@ -67,11 +67,22 @@ ANSWER_MARKDOWN = MarkdownIt("commonmark", {"html": True}).enable(["table", "str
 ANSWER_URL = re.compile(r"\b(?:[a-z][a-z0-9+.-]*://|mailto:|www\.)[^\s<>\"']+", re.IGNORECASE)
 MARKDOWN_PUNCTUATION = re.compile(r"([\\`*_\[\]<>|~])")
 
+FILENAME_INTRO = re.compile(
+    r"""\A\s*(?:\*\*)?(?:name the output(?: exactly)?|save the output as|rename the output to)\s+"""
+    r"""[`"']?(?P<filename>(?P<label>\[CONTRACT_ID_[1-9][0-9]*\])\.[a-z0-9]+)[`"']?"""
+    r"""\.?(?:\*\*)?[ \t]*\r?\n(?:[ \t]*\r?\n)*""",
+    re.IGNORECASE,
+)
+
 
 def _restore_answer(answer, sent_prompt, originals):
     used = set(REDACTED_LABEL.findall(sent_prompt)) & originals.keys()
     if not used:
         return answer
+
+    intro = FILENAME_INTRO.match(answer)
+    if intro and intro["label"] in used and intro["filename"] in answer[intro.end():]:
+        answer = answer[intro.end():]
 
     prefix = "tdbrestore" + secrets.token_hex(8)
     markers = re.compile(prefix + r"[0-9]+end")
