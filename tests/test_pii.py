@@ -69,6 +69,27 @@ class PIITests(unittest.TestCase):
             "[SSN_2]": "321765432",
         })
 
+    @unittest.skipUnless(find_spec("en_core_web_sm"), "The local spaCy model is unavailable.")
+    def test_italian_conditional_preserves_text_and_still_detects_real_names(self):
+        detector = PIIDetector()
+        for quantity in ("due", "2"):
+            with self.subTest(quantity=quantity):
+                prompt = f"Se ho {quantity} biscotti, e un tipo ne mangia uno, quanti biscotti mi rimangono?"
+                payload, private = detector.detect(prompt)
+                self.assertEqual(payload["status"], "clear")
+                self.assertEqual(payload["redacted_prompt"], prompt)
+                self.assertEqual(private, {})
+
+        prompt = "Se ho due biscotti per Maya Brooks, quanti me ne rimangono? Contattala a maya@example.test."
+        payload, private = detector.detect(prompt)
+        self.assertEqual(
+            payload["redacted_prompt"],
+            "Se ho due biscotti per [NAME_1], quanti me ne rimangono? Contattala a [EMAIL_1].",
+        )
+        self.assertEqual(private, {"[NAME_1]": "Maya Brooks", "[EMAIL_1]": "maya@example.test"})
+        _, private = detector.detect("Se Ho emailed the team.")
+        self.assertEqual(private, {"[NAME_1]": "Se Ho"})
+
     def test_dates_product_codes_and_literal_labels_stay_intact(self):
         prompt = "Ask the site coordinator by Friday at 16:30 on 2026-11-21 about SKU2025550142 and [SSN_1]."
         payload, private = self.detector.detect(prompt)

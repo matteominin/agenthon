@@ -61,3 +61,10 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Dipende da — T4, T5, T6. Concordare le dipendenze prima di aggiungerle.
 - Done when — `uv run agenthon` apre la demo. I casi sintetici e gli errori simulati si verificano seguendo il README. Prompt, anteprime, suggerimenti, risposte ed entrambe le viste sono in inglese.
 - Delivery notes —
+
+## T8 — Revisione fedele al prompt · DONE
+
+- Scope — `src/agenthon/{pii,rephrase,models,proxy}/`, `src/agenthon/ui/chat.py`, `tests/test_{pii,rephrase,proxy,chat}.py`, `SPEC.md`.
+- Done when — L'apertura italiana «Se ho» resta intatta e il testo proposto conserva lingua e contenuto attorno ai segnaposto.
+- Delivery notes — Corretto il falso positivo di spaCy e mantenuto il testo oscurato esatto nella proposta. Rephrase e Suggestion alimentano gli avvisi.
+  Con le dipendenze demo, eseguire `PYTHONPATH=src:tests python -m unittest test_pii test_rephrase test_proxy test_chat`.

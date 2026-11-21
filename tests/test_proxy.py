@@ -143,22 +143,23 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(attempts, ["retry", "fail"])
         self.assertFalse(self.calls)
 
-    def test_rephrase_cannot_remove_placeholders_or_reinsert_pii(self):
+    def test_rephrase_cannot_alter_the_redacted_text(self):
         for transform in (
             lambda prompt: prompt + "\n",
             lambda prompt: prompt.replace("[NAME_1]", "the lead"),
             lambda prompt: f"{prompt}\nJordan Miller",
+            lambda prompt: prompt.replace("two", "several"),
         ):
             with self.subTest(transform=transform):
                 def unsafe(data):
                     return {
                         "proposed_prompt": transform(data["prompt"]),
-                        "changed": True,
+                        "changed": False,
                         "confidence": 1,
                     }
 
                 proxy = Proxy(self.provider, detector=self.detector, rephraser=unsafe)
-                result = proxy.submit({"prompt": CASES[1]["prompt"]})
+                result = proxy.submit({"prompt": "Send Jordan Miller two copies of the report."})
                 self.assertEqual(result["reason"], "invalid_output")
                 self.assertEqual(result["allowed_actions"], ["edit"])
                 self.assertTrue(proxy.history()[0]["risk_flag"])
@@ -166,6 +167,15 @@ class ProxyTests(unittest.TestCase):
                             if event["agent"] == "rephrase"]
                 self.assertEqual(attempts, ["retry", "fail"])
                 self.assertFalse(self.calls)
+
+    @unittest.skipUnless(find_spec("en_core_web_sm"), "The local spaCy model is unavailable.")
+    def test_clean_italian_prompt_is_sent_as_written(self):
+        proxy = Proxy(self.provider)
+        prompt = "Se ho due biscotti, e un tipo ne mangia uno, quanti biscotti mi rimangono?"
+        result = proxy.submit({"prompt": prompt})
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(self.calls, [(prompt, "deepseek")])
+        self.assertFalse(proxy.history()[0]["risk_flag"])
 
     def test_missing_staffing_information_is_visible_separately_from_actions(self):
         result = self.proxy.submit({
@@ -308,14 +318,14 @@ class DeepSeekTests(unittest.TestCase):
                 self.assertEqual(provider("  Draft a message for [NAME_1].\n", route), "Hello.")
             self.assertEqual(transport.call_count, 2)
 
-    def test_deepseek_rephrases_and_suggests_from_redacted_input_before_review(self):
+    def test_deepseek_analyzes_and_suggests_without_rewriting_the_review(self):
         case = CASES[2]
         proposal = (
-            "Draft a brief message to [NAME_1] asking for the rollout status. "
-            "Recipient address for reference: [EMAIL_1]."
+            "Draft a message asking [NAME_1] for an update on the rollout. "
+            "Her email address is [EMAIL_1]."
         )
-        rewrite = {
-            "proposed_prompt": proposal,
+        review_notes = {
+            "proposed_prompt": "Draft a brief update to [NAME_1] with [EMAIL_1] as a reference.",
             "changed": True,
             "confidence": 0.95,
             "missing_information": [{
@@ -354,7 +364,7 @@ class DeepSeekTests(unittest.TestCase):
         proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
         with patch("agenthon.models.urlopen", side_effect=[
             completion("invalid JSON"),
-            completion(json.dumps(rewrite)),
+            completion(json.dumps(review_notes)),
             completion(json.dumps(unsafe_suggestions)),
             completion(json.dumps(suggestions)),
             completion("Demo answer."),
@@ -383,7 +393,7 @@ class DeepSeekTests(unittest.TestCase):
                 ]
                 system_prompt = payload["messages"][0]["content"]
                 if index < 2:
-                    self.assertIn("Rewrite an already redacted employee request", system_prompt)
+                    self.assertIn("Identify missing information in an already redacted employee request", system_prompt)
                     self.assertEqual(data, {
                         "prompt": (
                             "Draft a message asking [NAME_1] for an update on the rollout. "
@@ -396,7 +406,7 @@ class DeepSeekTests(unittest.TestCase):
                     self.assertEqual(data, {
                         "proposed_prompt": proposal,
                         "entities": entities,
-                        "missing_information": rewrite["missing_information"],
+                        "missing_information": review_notes["missing_information"],
                     })
 
             result = proxy.decide(choice(review))

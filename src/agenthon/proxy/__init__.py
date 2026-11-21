@@ -201,11 +201,9 @@ class Proxy:
             validate_contract("agents", result, "rephrase")
             proposed = result["proposed_prompt"]
             missing = result.get("missing_information", [])
-            if (not proposed.strip()
+            if (proposed != redacted
                     or result["confidence"] < 0.5
-                    or not result["changed"]
-                    or proposed.strip() == redacted.strip()
-                    or Counter(_PLACEHOLDER.findall(proposed)) != Counter(_PLACEHOLDER.findall(redacted))
+                    or result["changed"]
                     or _contains_removed_value(proposed, known_values.values())
                     or any(
                         item.get("label") not in allowed_labels

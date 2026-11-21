@@ -15,23 +15,17 @@ class RephraseTests(unittest.TestCase):
         ]
         result = rephrase({"prompt": prompt, "entities": entities})
 
-        self.assertTrue(result["changed"])
-        self.assertIn("Objective\nDraft an email asking for an update on the quarterly report.",
-                      result["proposed_prompt"])
-        self.assertIn("Recipient\nthe project lead, [NAME_1] ([EMAIL_1])", result["proposed_prompt"])
-        self.assertIn("Use any roles and facts already given", result["proposed_prompt"])
-        self.assertNotIn("Jordan Miller", result["proposed_prompt"])
-        self.assertNotIn("jordan.miller@example.test", result["proposed_prompt"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(result["proposed_prompt"], prompt)
         self.assertEqual([entity["label"] for entity in entities],
                          [detail["label"] for detail in result["missing_information"]])
 
-    def test_shift_plan_with_missing_inputs_uses_explicit_hypotheses(self):
+    def test_shift_plan_reports_missing_inputs_without_rewriting(self):
         prompt = "Create a weekly work shift schedule for [NAME_1] and [NAME_2]. The site closes Friday."
         entities = [{"type": "name", "label": label} for label in ("[NAME_1]", "[NAME_2]")]
         result = rephrase({"prompt": prompt, "entities": entities})
 
-        self.assertIn("Label each scenario as hypothetical", result["proposed_prompt"])
-        self.assertIn(prompt, result["proposed_prompt"])
+        self.assertEqual(result["proposed_prompt"], prompt)
         missing = [item["detail"] for item in result["missing_information"] if "label" not in item]
         self.assertEqual(missing, ["Individual shift availability is missing.",
                                    "Staff skills or qualifications are missing."])
@@ -45,7 +39,7 @@ class RephraseTests(unittest.TestCase):
         result = rephrase({"prompt": prompt, "entities": entities})
 
         self.assertEqual(len(result["missing_information"]), 1)
-        self.assertNotIn("hypothetical", result["proposed_prompt"])
+        self.assertEqual(result["proposed_prompt"], prompt)
 
     def test_request_about_a_shift_schedule_does_not_require_creating_one(self):
         prompt = "Draft an email about the shift schedule."

@@ -10,6 +10,9 @@ import re
 _PREFIXES = {"name": "NAME", "email": "EMAIL", "phone": "PHONE", "tax_id": "SSN"}
 _TYPES_BY_PREFIX = {prefix: kind for kind, prefix in _PREFIXES.items()}
 _LABEL = re.compile(r"\[(" + "|".join(_TYPES_BY_PREFIX) + r")_[1-9][0-9]*\]")
+_ITALIAN_CONDITIONAL_OPENING = re.compile(
+    r"(?:^|(?<=[.!?\n]))[ \t]*[Ss]e[ \t]+(?:ho|hai|ha|abbiamo|avete|hanno)(?=[ \t])"
+)
 _EMAIL = re.compile(
     r"(?<![\w.+-])[\w!#$%&'*+/=?^`{|}~-]+"
     r"(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*@"
@@ -49,9 +52,11 @@ def _load_name_finder() -> NameFinder:
     model = spacy.load("en_core_web_sm")
 
     def find_names(prompt):
+        # Preserve offsets and keep a lowercase Italian verb from being read as part of a name.
+        scan = _ITALIAN_CONDITIONAL_OPENING.sub(lambda match: " " * len(match[0]), prompt)
         return (
             (entity.start_char, entity.end_char)
-            for entity in model(prompt).ents
+            for entity in model(scan).ents
             if entity.label_ == "PERSON"
         )
 

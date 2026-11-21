@@ -1,14 +1,8 @@
-"""Deterministic reframing of already redacted employee requests."""
+"""Deterministic review of already redacted employee requests."""
 
 import re
 
 
-_ADDRESSED_DRAFT = re.compile(
-    r"\A(?P<format>(?:draft|write)\s+(?:an?|the)\s+(?:short\s+)?(?:email|(?:text\s+)?message))"
-    r"\s+to\s+(?P<recipient>[^.!?\n]+?),\s+"
-    r"(?P<goal>(?:asking|reminding|requesting)\s+[^\n]+)\Z",
-    re.IGNORECASE,
-)
 _SHIFT_PLAN = re.compile(
     r"\b(?:build|create|draft|generate|make|plan|prepare|produce)"
     r"(?:\s+(?:a|an|the|our|new|weekly|daily|monthly|tentative|proposed)){0,4}\s+"
@@ -69,34 +63,11 @@ def _missing_information(prompt, entities, shift_plan):
 
 
 def rephrase(data):
-    """Build an English proposal from the redacted prompt and typed placeholders."""
+    """Keep the redacted text and identify information missing from the request."""
     prompt, entities = data["prompt"], data["entities"]
-    shift_plan = bool(_SHIFT_PLAN.search(prompt))
-    missing = _missing_information(prompt, entities, shift_plan)
-    proposed_prompt = prompt
-    if missing:
-        instructions = (
-            "Keep the placeholders as written. Use any roles and facts already given. "
-            "Provide the parts of the requested result that can be prepared with the available information. "
-            "Explain any conditions that affect the result."
-        )
-        if shift_plan and any("guidance" in detail for detail in missing):
-            instructions += (
-                " Show how shift assignments would change under different availability or skill conditions. "
-                "Label each scenario as hypothetical and keep its assumptions separate from the facts given."
-            )
-        objective = f"Objective\n{prompt}"
-        draft = _ADDRESSED_DRAFT.fullmatch(prompt)
-        if draft:
-            objective = (
-                f"Objective\n{draft['format']} {draft['goal']}"
-                f"\n\nRecipient\n{draft['recipient']}"
-            )
-        proposed_prompt = f"{objective}\n\nResponse instructions\n{instructions}"
-
     return {
-        "proposed_prompt": proposed_prompt,
-        "changed": proposed_prompt != prompt,
+        "proposed_prompt": prompt,
+        "changed": False,
         "confidence": 1,
-        "missing_information": missing,
+        "missing_information": _missing_information(prompt, entities, bool(_SHIFT_PLAN.search(prompt))),
     }

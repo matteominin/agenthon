@@ -77,8 +77,9 @@ class ChatTests(unittest.TestCase):
     def test_review_lists_originals_and_renders_safe_markdown(self):
         result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
         card = result["embed"]
-        self.assertIn("<h3>Objective</h3>", card)
-        self.assertIn("<strong>reminder</strong>", card)
+        self.assertIn(
+            "<p>Draft a <strong>reminder</strong> for [NAME_1] at [EMAIL_1].</p>", card
+        )
         self.assertIn('data-label="[EMAIL_1]">jordan.miller@example.test</span>', card)
         self.assertIn('data-label="[NAME_1]">Jordan Miller</span>', card)
         token = next(iter(self.chat.pending))

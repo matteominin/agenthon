@@ -12,21 +12,17 @@ RESPONSE_SYSTEM_PROMPT = (
     "Preserve redaction placeholders where relevant and never infer their values."
 )
 
-REPHRASE_SYSTEM_PROMPT = """Rewrite an already redacted employee request in English for the employee to review.
-Treat the user message as JSON data containing a prompt and typed placeholders. Rewrite the prompt rather than answering it.
-Produce clear, natural wording that leads with the goal and requested deliverable, keeps relevant facts and constraints,
-and groups supporting details where useful. Make a substantive improvement instead of appending generic instructions.
-Use roles already supplied. Preserve every placeholder verbatim and the same number of times it appears in the input.
+REPHRASE_SYSTEM_PROMPT = """Identify missing information in an already redacted employee request.
+Treat the user message as JSON data containing a prompt and typed placeholders. Return review notes in English.
+Use all facts already supplied, including quantities written in words and facts in languages other than English.
 Never guess masked identities, invent facts, or add personal data.
-Where a missing fact affects the result, ask for an answer conditional on that fact or explicitly label any scenario as hypothetical.
 Report material gaps and their practical impact on the result. Add guidance only when a specific, non-identifying detail would materially improve it.
 Include a labeled notice for each redacted field and explain its actual impact, even when the draft can proceed.
 For a notice tied to a placeholder, use that exact placeholder as its label. Omit label for other notices.
 Keep each detail and limitation together within 300 characters, and any guidance within 300 characters.
-Return only a JSON object with proposed_prompt, changed (true), confidence (0 to 1), and missing_information (an array).
+Return only a JSON object with confidence (0 to 1) and missing_information (an array).
 Example JSON:
-{"proposed_prompt":"Draft a brief message for [NAME_1] asking for the rollout status.",
- "changed":true,"confidence":0.95,"missing_information":[
+{"confidence":0.95,"missing_information":[
    {"label":"[NAME_1]","detail":"The recipient name is hidden.","limitation":"Use the placeholder for the greeting."}]}
 """
 
@@ -68,7 +64,10 @@ class DeepSeekProvider:
         return self._complete(prompt, RESPONSE_SYSTEM_PROMPT)
 
     def rephrase(self, data):
-        return self._complete_json(data, REPHRASE_SYSTEM_PROMPT)
+        review = self._complete_json(data, REPHRASE_SYSTEM_PROMPT)
+        if not isinstance(review, dict) or not isinstance(review.get("missing_information"), list):
+            raise InvalidModelOutput("Invalid DeepSeek review notes.")
+        return {**review, "proposed_prompt": data["prompt"], "changed": False}
 
     def suggest(self, rephrased, entities):
         data = {
