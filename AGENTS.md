@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Project: TDB.
-The project introduces an intelligent system for securely using Large Language Models (LLMs) in enterprise environments. User requests are enriched through a Retrieval-Augmented Generation (RAG) architecture that retrieves relevant information from a vector database. An AI agent then analyzes the content to detect Personally Identifiable Information (PII) and sensitive data. When privacy risks are identified, the system proposes a safer, anonymized version of the request and provides recommendations for protecting sensitive information. Through an interactive interface, users can review, approve, or modify the request before execution. The system also allows users to choose between a cloud-based model (OpenAI) and a locally hosted model (Qwen), preventing sensitive data from being unnecessarily shared with external services. This approach combines human oversight, data protection, and controlled AI adoption in enterprise workflows.
+TDB is a privacy proxy for enterprise AI requests. It detects personal data before model calls and prepares a redacted prompt for employee review when needed. Admins see all requests and available responses, with a risk flag on requests where PII was detected. The hackathon demo uses DeepSeek and simulates a separate local route. See `SPEC.md` for the demo scope.
 
 Context: 12-hour hackathon, two developers working in parallel. Priority is a working demo.
 

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tdb.example/schemas/trace_event.json",
+  "title": "Trace event",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "agent": {
+      "enum": [
+        "pii",
+        "rephrase",
+        "suggestion",
+        "proxy",
+        "model"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "entity_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "route": {
+          "$ref": "proxy.json#/$defs/route"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "entity_counts": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "email": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "phone": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "tax_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "severity": {
+          "$ref": "agents.json#/$defs/severity"
+        },
+        "status": {
+          "enum": [
+            "processing",
+            "review_required",
+            "completed",
+            "failed"
+          ]
+        },
+        "reason": {
+          "$ref": "proxy.json#/$defs/reason"
+        },
+        "route": {
+          "$ref": "proxy.json#/$defs/route"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "action": {
+      "enum": [
+        "check",
+        "redact",
+        "rephrase",
+        "suggest",
+        "review",
+        "retry",
+        "route",
+        "complete",
+        "fail"
+      ]
+    },
+    "confidence": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "required": [
+    "timestamp",
+    "request_id",
+    "agent",
+    "input",
+    "output",
+    "action",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

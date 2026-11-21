@@ -1,0 +1,59 @@
+# TASKS
+
+Stati ammessi — TODO | DOING (owner) | REVIEW | DONE.
+I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI usando i casi demo. Compilare le note di consegna in massimo tre righe.
+
+## T0 — Specifica e scheletro · DONE
+
+- Scope — `AGENTS.md`, `SPEC.md`, `TASKS.md`, `DECISIONS.md`, `data/demo/`.
+- Done when — Flussi e priorità definiti, responsabilità assegnabili e scenari sintetici pronti.
+- Delivery notes — Specifica, backlog e decisioni in root. Fixture in `data/demo/requests.json`, verificabili con `python3 -m json.tool data/demo/requests.json`.
+
+## T1 — Contratti JSON · DONE
+
+- Scope — `schemas/`, `tests/test_contracts.py`.
+- Dipende da — T0.
+- Done when — Richiesta, output agenti, revisione, scelta utente, cronologia admin e trace hanno schema e fixture valide.
+- Delivery notes — Contratti Draft 2020-12 in `schemas/`. Eseguire `uv run --no-project --with jsonschema -- python -m unittest discover -s tests -p test_contracts.py`.
+
+## T2 — Rilevazione e oscuramento (Core) · TODO
+
+- Scope — `src/agenthon/pii/`, `tests/test_pii.py`.
+- Dipende da — T1.
+- Done when — I casi pulito e PII producono un esito validato, i segnaposto rimangono stabili durante la revisione e i falsi positivi noti della demo sono coperti dai test.
+- Delivery notes —
+
+## T3 — Rephrase e Suggestion (Core) · TODO
+
+- Scope — `src/agenthon/rephrase/`, `src/agenthon/suggestion/`, `tests/test_rephrase.py`, `tests/test_suggestion.py`.
+- Dipende da — T1, T2.
+- Done when — Il testo è arricchito solo dove utile e ogni segnaposto ha gravità e suggerimento. Test di conservazione dei segnaposto e di assenza dei valori rimossi.
+- Delivery notes —
+
+## T4 — Proxy, DeepSeek e trace (Core) · TODO
+
+- Scope — `src/agenthon/proxy/`, `src/agenthon/models/`, `src/agenthon/trace/`, `tests/test_proxy.py`, `.env.example`.
+- Dipende da — T1, T2, T3.
+- Done when — Bypass pulito, revisione, ricontrollo dopo modifica, invio approvato, rotta simulata, cronologia admin in memoria e trace funzionano con un provider di test. Verifica finale con DeepSeek e dati sintetici.
+- Delivery notes —
+
+## T5 — Chat e revisione (UI) · TODO
+
+- Scope — `src/agenthon/ui/chat.py`, `tests/test_chat.py`.
+- Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
+- Done when — L'anteprima è editabile e distingue i livelli di gravità. Le tre azioni usano il proxy e mostrano revisione, errore o risposta in chat.
+- Delivery notes —
+
+## T6 — Dashboard admin (UI) · TODO
+
+- Scope — `src/agenthon/ui/admin.py`, `tests/test_admin.py`.
+- Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
+- Done when — Tutte le richieste compaiono subito. Il dettaglio mostra prompt originale, prompt inviato e risposta quando disponibili. Il flag si attiva al primo rilevamento PII e resta visibile dopo l'esecuzione.
+- Delivery notes —
+
+## T7 — Entrypoint e prova demo (UI + Core) · TODO
+
+- Scope — `src/agenthon/__init__.py`, `src/agenthon/ui/app.py`, `README.md`, `pyproject.toml`, `uv.lock`.
+- Dipende da — T4, T5, T6. Concordare le dipendenze prima di aggiungerle.
+- Done when — `uv run agenthon` apre la demo. I casi sintetici e gli errori simulati si verificano seguendo il README.
+- Delivery notes —

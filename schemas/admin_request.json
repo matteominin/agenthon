@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tdb.example/schemas/admin_request.json",
+  "title": "Admin request history entry",
+  "type": "object",
+  "properties": {
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["processing", "review_required", "completed", "failed"] },
+    "risk_flag": { "type": "boolean" },
+    "original_prompt": { "type": "string", "minLength": 1 },
+    "sent_prompt": { "type": ["string", "null"], "minLength": 1 },
+    "response": { "type": ["string", "null"], "minLength": 1 },
+    "route": {
+      "anyOf": [{ "$ref": "proxy.json#/$defs/route" }, { "type": "null" }]
+    }
+  },
+  "required": [
+    "request_id", "timestamp", "status", "risk_flag",
+    "original_prompt", "sent_prompt", "response", "route"
+  ],
+  "additionalProperties": false,
+  "if": { "properties": { "status": { "const": "completed" } } },
+  "then": {
+    "properties": {
+      "sent_prompt": { "type": "string" },
+      "response": { "type": "string" },
+      "route": { "$ref": "proxy.json#/$defs/route" }
+    }
+  },
+  "else": { "properties": { "response": { "type": "null" } } }
+}

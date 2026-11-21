@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tdb.example/schemas/proxy.json",
+  "title": "Proxy requests, decisions and results",
+  "$defs": {
+    "reason": {
+      "enum": [
+        "pii_found",
+        "uncertain_detection",
+        "invalid_output",
+        "timeout",
+        "model_error",
+        "stale_review"
+      ]
+    },
+    "route": {
+      "enum": [
+        "deepseek",
+        "local_simulated"
+      ]
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "additionalProperties": false
+    },
+    "decision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "action": {
+              "const": "approve"
+            }
+          },
+          "required": [
+            "request_id",
+            "revision",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "action": {
+              "const": "edit"
+            },
+            "prompt": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "request_id",
+            "revision",
+            "action",
+            "prompt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "action": {
+              "const": "local_simulated"
+            }
+          },
+          "required": [
+            "request_id",
+            "revision",
+            "action"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "status": {
+              "const": "completed"
+            },
+            "route": {
+              "$ref": "#/$defs/route"
+            },
+            "answer": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "request_id",
+            "status",
+            "route",
+            "answer"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "status": {
+              "const": "review_required"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reason": {
+              "$ref": "#/$defs/reason"
+            },
+            "proposed_prompt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            },
+            "entities": {
+              "type": "array",
+              "items": {
+                "$ref": "agents.json#/$defs/entity"
+              },
+              "minItems": 0
+            },
+            "suggestions": {
+              "type": "array",
+              "items": {
+                "$ref": "agents.json#/$defs/suggestion"
+              },
+              "minItems": 0
+            },
+            "allowed_actions": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "approve",
+                  "edit",
+                  "local_simulated"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "request_id",
+            "status",
+            "revision",
+            "reason",
+            "proposed_prompt",
+            "entities",
+            "suggestions",
+            "allowed_actions"
+          ],
+          "additionalProperties": false,
+          "if": {
+            "properties": {
+              "proposed_prompt": { "type": "null" }
+            }
+          },
+          "then": {
+            "properties": {
+              "allowed_actions": { "const": ["edit"] }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "status": {
+              "const": "failed"
+            },
+            "reason": {
+              "$ref": "#/$defs/reason"
+            }
+          },
+          "required": [
+            "request_id",
+            "status",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/decision"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
+  ]
+}

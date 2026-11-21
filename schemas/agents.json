@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tdb.example/schemas/agents.json",
+  "title": "Agent payloads",
+  "$defs": {
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "piiType": {
+      "enum": [
+        "name",
+        "email",
+        "phone",
+        "tax_id"
+      ]
+    },
+    "severity": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "pattern": "^\\[(NOME|EMAIL|TEL|CF)_[1-9][0-9]*\\]$"
+    },
+    "entity": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "type": {
+          "$ref": "#/$defs/piiType"
+        }
+      },
+      "required": [
+        "label",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "pii": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "clear",
+            "detected",
+            "uncertain"
+          ]
+        },
+        "redacted_prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entity"
+          },
+          "minItems": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "required": [
+        "status",
+        "redacted_prompt",
+        "entities",
+        "confidence"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "clear"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "entities": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "detected"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "entities": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "redacted_input": {
+      "type": "object",
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1 },
+        "entities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entity" }
+        }
+      },
+      "required": ["prompt", "entities"],
+      "additionalProperties": false
+    },
+    "rephrase": {
+      "type": "object",
+      "properties": {
+        "proposed_prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "required": [
+        "proposed_prompt",
+        "changed",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "suggestion": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "action": {
+          "enum": [
+            "remove",
+            "generalize",
+            "add_context"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "label",
+        "severity",
+        "action",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "suggestions": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/suggestion"
+          },
+          "minItems": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "required": [
+        "items",
+        "confidence"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/redacted_input"
+    },
+    {
+      "$ref": "#/$defs/pii"
+    },
+    {
+      "$ref": "#/$defs/rephrase"
+    },
+    {
+      "$ref": "#/$defs/suggestions"
+    }
+  ]
+}
