@@ -67,15 +67,11 @@ def review_card(review, token, originals=None):
             f' · {original}</span>'
         )
 
-    def notes(title, items):
-        if not items:
-            return ""
-        return (f"<details open><summary>{title}</summary><ul>"
-                + "".join(f"<li>{escape(s['message'])}</li>" for s in items) + "</ul></details>")
-
-    suggestions = review["suggestions"]
-    guidance = notes("Missing information", [s for s in suggestions if "action" not in s])
-    guidance += notes("Suggested actions", [s for s in suggestions if "action" in s])
+    suggested_actions = [s for s in review["suggestions"] if "action" in s]
+    guidance = ""
+    if suggested_actions:
+        items = "".join(f"<li>{escape(s['message'])}</li>" for s in suggested_actions)
+        guidance = f"<details open><summary>Suggested actions</summary><ul>{items}</ul></details>"
     has_preview = proposal is not None
     actions = []
     for action in ("local_simulated", "approve", "edit"):

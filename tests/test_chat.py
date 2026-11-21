@@ -31,7 +31,7 @@ class ChatTests(unittest.TestCase):
                 result = self.chat.turn(OWNER, case["prompt"])
                 if "decision" in case:
                     self.assertEqual(self.sent, [])
-                    self.assertIn("Missing information", result["embed"])
+                    self.assertNotIn("Missing information", result["embed"])
                     token = re.search(r'data-reference="([A-Za-z0-9_-]{16})"', result["embed"])[1]
                     action = case["decision"]
                     choice = f"{BUTTONS[action]} [TDB:{token}]"
@@ -114,15 +114,30 @@ class ChatTests(unittest.TestCase):
         })
         self.assertEqual(result["message"], "Request failed. The request timed out.")
 
-    def test_unverified_review_only_offers_edit_and_escapes_notices(self):
+    def test_unverified_review_only_offers_edit_and_hides_notices(self):
         html = review_card({"proposed_prompt": None, "allowed_actions": ["edit"],
             "reason": "uncertain_detection", "entities": [{"label": "[SSN_1]", "type": "tax_id"}],
             "suggestions": [{"message": "<notice>"}]}, "abcdefghijklmnop")
         self.assertIn("High severity", html)
-        self.assertIn("&lt;notice&gt;", html)
+        self.assertNotIn("&lt;notice&gt;", html)
         self.assertNotIn('data-choice="approve"', html)
         self.assertNotIn('data-choice="local_simulated"', html)
         self.assertNotIn("Suggested actions", html)
+
+    def test_review_displays_suggested_actions_when_available(self):
+        html = review_card({
+            "proposed_prompt": "Plan the shift for [NAME_1].",
+            "allowed_actions": ["approve", "edit"],
+            "reason": "pii_found",
+            "entities": [],
+            "suggestions": [
+                {"message": "Shift details are missing."},
+                {"message": "Add <availability>.", "action": "edit"},
+            ],
+        }, "abcdefghijklmnop")
+        self.assertIn("<summary>Suggested actions</summary>", html)
+        self.assertIn("Add &lt;availability&gt;.", html)
+        self.assertNotIn("Shift details are missing.", html)
 
 
 class PipeTests(unittest.IsolatedAsyncioTestCase):
