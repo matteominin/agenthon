@@ -32,7 +32,7 @@ class ChatTests(unittest.TestCase):
                 if "decision" in case:
                     self.assertEqual(self.sent, [])
                     self.assertIn("Missing information", result["embed"])
-                    token = re.search(r'\[TDB:([A-Za-z0-9_-]{16})\]', result["embed"])[1]
+                    token = re.search(r'data-reference="([A-Za-z0-9_-]{16})"', result["embed"])[1]
                     action = case["decision"]
                     choice = f"{BUTTONS[action]} [TDB:{token}]"
                     if action == "edit":
@@ -105,10 +105,10 @@ class ChatTests(unittest.TestCase):
         proxy.decide.return_value = {"status": "failed", "reason": "timeout"}
         chat = Chat(proxy)
         review = chat.turn(OWNER, "Draft a reminder.")
-        token = re.search(r"\[TDB:([A-Za-z0-9_-]{16})\]", review["embed"])[1]
+        token = re.search(r'data-reference="([A-Za-z0-9_-]{16})"', review["embed"])[1]
         self.assertIn("out of date", chat.turn(OWNER, f"{BUTTONS['approve']} [TDB:{token}]")["message"])
         draft = "  Ask for a delivery estimate.\n"
-        result = chat.turn(OWNER, f"{BUTTONS['edit']} [TDB:{token}]\n{draft}\n[/TDB edit]")
+        result = chat.turn(OWNER, f"{BUTTONS['edit']}\n\n{draft}\n\nReview reference: {token}")
         proxy.decide.assert_called_once_with({
             "request_id": "demo-edit", "revision": 4, "action": "edit", "prompt": draft,
         })

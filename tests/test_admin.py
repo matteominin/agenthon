@@ -1,5 +1,6 @@
 import json
 import unittest
+from xml.etree import ElementTree
 
 import gradio as gr
 from gradio.state_holder import SessionState
@@ -51,11 +52,15 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         )
         event_data = None
         if row is not None:
-            event_data = gr.EventData(None, {"index": [0, 0], "value": row[0], "row_value": row})
+            event_data = gr.EventData(None, {"request_id": row[1]})
         result = await self.app.process_api(
             dependency["id"], [None] * (len(dependency["inputs"]) - 3) + list(filters), state=self.session, event_data=event_data,
         )
-        return result["data"]
+        output = result["data"]
+        if isinstance(output[2], str):
+            table = ElementTree.fromstring(output[2])
+            output[2] = {"data": [["".join(td.itertext()) for td in tr] for tr in table.findall("./tbody/tr")]}
+        return output
 
     async def test_empty_then_shows_processing_and_failed_requests_in_time_order(self):
         initial = await self.trigger("load")
@@ -66,7 +71,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         rows = updated[2]["data"]
         self.assertEqual([row[1] for row in rows], ["demo-edit", "demo-clean"])
         self.assertEqual(rows[0], ["2026-11-21 12:01:00", "demo-edit", "Processing", "Pending", "—"])
-        selected = await self.trigger("select", rows[1])
+        selected = await self.trigger("click", rows[1])
         self.assertIn("Failed", selected[5])
         self.assertEqual(selected[6], CASES["demo-clean"]["prompt"])
         self.assertEqual(selected[7:9], ["Unavailable", "Unavailable"])
@@ -79,7 +84,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         clicked_row = initial[2]["data"][0]
         self.add_entry("demo-clean", "2026-11-21T12:01:00Z")
         await self.trigger("tick")
-        selected = await self.trigger("select", clicked_row)
+        selected = await self.trigger("click", clicked_row)
         self.assertIn(case, selected[5])
         self.assertNotIn("PII Risk", selected[5])
         self.add_entry(case, timestamp, status="review_required", risk_flag=True)
@@ -111,7 +116,8 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         ])
         self.assertEqual(completed[9]["data"][0][1:3], ["model", "complete"])
         unchanged = await self.trigger("tick")
-        self.assertEqual(unchanged[2], {"__type__": "update"})
+        self.assertEqual(unchanged[2]["__type__"], "update")
+        self.assertNotIn("value", unchanged[2])
 
     async def test_t4_history_and_trace_follow_the_selected_request(self):
         proxy = Proxy(lambda prompt, route: "Demo response", detector=PIIDetector(find_names=find_names))
@@ -126,7 +132,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         pending_row, clean_row = snapshot[2]["data"]
         self.assertEqual(clean_row[1:], [clean["request_id"], "Completed", "DeepSeek", "—"])
         self.assertEqual(pending_row[1:], [review["request_id"], "Review required", "Pending", "Detected"])
-        pending = await self.trigger("select", pending_row)
+        pending = await self.trigger("click", pending_row)
         self.assertEqual(pending[6:9], [original, "Unavailable", "Unavailable"])
 
         proxy.decide({
