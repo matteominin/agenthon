@@ -361,7 +361,7 @@ class DeepSeekTests(unittest.TestCase):
                 self.assertEqual(provider("  Draft a message for [NAME_1].\n", route), "Hello.")
             self.assertEqual(transport.call_count, 2)
 
-    def test_deepseek_analyzes_and_suggests_without_rewriting_the_review(self):
+    def test_deepseek_allows_no_suggestions_without_rewriting_the_review(self):
         case = CASES[2]
         proposal = (
             "Draft a message asking [NAME_1] for an update on the rollout. "
@@ -378,28 +378,10 @@ class DeepSeekTests(unittest.TestCase):
             }],
         }
 
-        suggestions = {
-            "confidence": 0.95,
-            "items": [
-                {"label": "[NAME_1]", "severity": "medium", "message": "Use the recipient placeholder."},
-                {
-                    "label": "[EMAIL_1]",
-                    "severity": "medium",
-                    "message": "The message can be drafted with the address hidden.",
-                },
-                {
-                    "action": "add_context",
-                    "message": "If the rollout spans several phases, include the phase that needs an update.",
-                },
-            ],
-        }
+        suggestions = {"confidence": 0.95, "items": []}
         review_with_nulls = {
             **review_notes,
             "missing_information": [{**review_notes["missing_information"][0], "guidance": None}],
-        }
-        suggestions_with_nulls = {
-            **suggestions,
-            "items": [{**suggestions["items"][0], "action": None}, *suggestions["items"][1:]],
         }
         unsafe_suggestions = {
             "confidence": 0.95,
@@ -417,7 +399,7 @@ class DeepSeekTests(unittest.TestCase):
             completion("invalid JSON"),
             completion(json.dumps(review_with_nulls)),
             completion(json.dumps(unsafe_suggestions)),
-            completion(json.dumps(suggestions_with_nulls)),
+            completion(json.dumps(suggestions)),
             completion("Demo answer."),
         ]) as transport:
             review = proxy.submit({"prompt": case["prompt"]})
@@ -457,6 +439,8 @@ class DeepSeekTests(unittest.TestCase):
                     })
                 else:
                     self.assertIn("Write concise review notices and optional actions", system_prompt)
+                    self.assertIn("Return an empty items array when nothing useful qualifies", system_prompt)
+                    self.assertIn("one short sentence per message", system_prompt)
                     self.assertEqual(data, {
                         "proposed_prompt": proposal,
                         "entities": entities,
@@ -471,6 +455,20 @@ class DeepSeekTests(unittest.TestCase):
                 {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
                 {"role": "user", "content": proposal},
             ])
+
+    def test_suggestion_normalizes_null_optional_fields(self):
+        provider = DeepSeekProvider(api_key="test-key")
+        with patch.object(provider, "_complete_json", return_value={
+            "confidence": 0.95,
+            "items": [{"message": "Shift coverage depends on availability.", "action": None,
+                       "label": None, "severity": None}],
+        }):
+            result = provider.suggest({"proposed_prompt": "Draft a shift plan."}, [])
+
+        self.assertEqual(result, {
+            "confidence": 0.95,
+            "items": [{"message": "Shift coverage depends on availability."}],
+        })
 
     def test_invalid_review_contract_reports_the_check_without_raw_fields(self):
         phone = "+1-202-555-0142"
@@ -509,7 +507,7 @@ class DeepSeekTests(unittest.TestCase):
                 self.assertEqual(first["status"], case["expected"][0], first.get("reason"))
                 result = first
                 if "decision" in case:
-                    self.assertTrue(first["suggestions"], first.get("reason"))
+                    self.assertTrue(first["proposed_prompt"], first.get("reason"))
                     extra = {"prompt": case["edited_prompt"]} if "edited_prompt" in case else {}
                     result = proxy.decide(choice(first, case["decision"], **extra))
                 self.assertEqual(result["status"], case["expected"][-1], result.get("reason"))
