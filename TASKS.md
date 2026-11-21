@@ -16,12 +16,12 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Done when — Richiesta, output agenti, revisione, scelta utente, cronologia admin e trace hanno schema e fixture valide.
 - Delivery notes — Contratti Draft 2020-12 in `schemas/`. Eseguire `uv run --no-project --with jsonschema -- python -m unittest discover -s tests -p test_contracts.py`.
 
-## T2 — Rilevazione e oscuramento (Core) · TODO
+## T2 — Rilevazione e oscuramento (Core) · DONE
 
 - Scope — `src/agenthon/pii/`, `tests/test_pii.py`.
 - Dipende da — T1.
 - Done when — I casi pulito e PII producono un esito validato, i segnaposto rimangono stabili durante la revisione e i falsi positivi noti della demo in inglese sono coperti dai test. Prima dell’integrazione, concordare i prefissi inglesi dei segnaposto nei contratti condivisi.
-- Delivery notes —
+- Delivery notes — Rilevamento locale in `src/agenthon/pii/` con segnaposto `NAME`, `EMAIL`, `PHONE` e `SSN`. Con spaCy, `en_core_web_sm` e jsonschema disponibili, eseguire `PYTHONPATH=src python -m unittest discover -s tests -p test_pii.py`.
 
 ## T3 — Rephrase e Suggestion (Core) · TODO
 

@@ -25,7 +25,7 @@
     },
     "label": {
       "type": "string",
-      "pattern": "^\\[(NOME|EMAIL|TEL|CF)_[1-9][0-9]*\\]$"
+      "pattern": "^\\[(NAME|EMAIL|PHONE|SSN)_[1-9][0-9]*\\]$"
     },
     "entity": {
       "type": "object",

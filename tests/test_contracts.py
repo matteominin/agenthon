@@ -51,18 +51,21 @@ class ContractTests(unittest.TestCase):
                     })
 
     def test_review_and_agent_handoffs(self):
-        entity = {"label": "[NOME_1]", "type": "name"}
-        prompt = "Scrivi al referente [NOME_1]."
+        entity = {"label": "[NAME_1]", "type": "name"}
+        prompt = "Write to the contact [NAME_1]."
         suggestion = {
             "label": entity["label"],
             "severity": "medium",
             "action": "generalize",
-            "message": "Usa il ruolo di referente.",
+            "message": "Use the contact's role.",
         }
         agents = validator("agents")
         agents.validate({"status": "detected", "redacted_prompt": prompt,
                          "entities": [entity], "confidence": 0.98})
         agents.validate({"prompt": prompt, "entities": [entity]})
+        for prefix, kind in (("EMAIL", "email"), ("PHONE", "phone"), ("SSN", "tax_id")):
+            label = f"[{prefix}_1]"
+            agents.validate({"prompt": label, "entities": [{"label": label, "type": kind}]})
         agents.validate({"proposed_prompt": prompt, "changed": False, "confidence": 1})
         agents.validate({"items": [suggestion], "confidence": 1})
         review = {
@@ -80,7 +83,7 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(proxy.is_valid({**review, "proposed_prompt": None}))
         proxy.validate({**review, "proposed_prompt": None, "allowed_actions": ["edit"]})
         self.assertFalse(agents.is_valid({
-            "prompt": prompt, "entities": [{**entity, "value": "Mario Rossi"}]
+            "prompt": prompt, "entities": [{**entity, "value": "Jordan Miller"}]
         }))
 
     def test_admin_history_has_clean_and_flagged_requests(self):
