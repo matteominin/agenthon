@@ -7,7 +7,7 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 - Scope — `AGENTS.md`, `SPEC.md`, `TASKS.md`, `DECISIONS.md`, `data/demo/`.
 - Done when — Flussi e priorità definiti, responsabilità assegnabili e scenari sintetici pronti.
-- Delivery notes — Specifica, backlog e decisioni in root. Fixture in `data/demo/requests.json`, verificabili con `python3 -m json.tool data/demo/requests.json`.
+- Delivery notes — Specifica, backlog e decisioni in root. Fixture in `data/demo/requests.json`, verificabili con `python3 -m json.tool data/demo/requests.json`. Flusso di revisione aggiornato per i dati mancanti e le azioni selettive. Fixture in inglese e lingua dei testi visibili definita nella specifica.
 
 ## T1 — Contratti JSON · DONE
 
@@ -20,14 +20,14 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 - Scope — `src/agenthon/pii/`, `tests/test_pii.py`.
 - Dipende da — T1.
-- Done when — I casi pulito e PII producono un esito validato, i segnaposto rimangono stabili durante la revisione e i falsi positivi noti della demo sono coperti dai test.
+- Done when — I casi pulito e PII producono un esito validato, i segnaposto rimangono stabili durante la revisione e i falsi positivi noti della demo in inglese sono coperti dai test. Prima dell’integrazione, concordare i prefissi inglesi dei segnaposto nei contratti condivisi.
 - Delivery notes —
 
 ## T3 — Rephrase e Suggestion (Core) · TODO
 
 - Scope — `src/agenthon/rephrase/`, `src/agenthon/suggestion/`, `tests/test_rephrase.py`, `tests/test_suggestion.py`.
-- Dipende da — T1, T2.
-- Done when — Il testo è arricchito solo dove utile e ogni segnaposto ha gravità e suggerimento. Test di conservazione dei segnaposto e di assenza dei valori rimossi.
+- Dipende da — T1, T2. Prima dell'integrazione, concordare come rappresentare nei contratti le informazioni mancanti, anche quando non sono associate a un segnaposto.
+- Done when — Rephrase propone comunque un testo strutturato quando manca contesto e individua le informazioni assenti. Suggestion le segnala e propone azioni solo per dettagli con un beneficio sostanziale per la risposta. I test coprono casi ipotetici espliciti, conservazione dei segnaposto, assenza dei valori rimossi e distinzione tra avvisi e azioni.
 - Delivery notes —
 
 ## T4 — Proxy, DeepSeek e trace (Core) · TODO
@@ -41,7 +41,7 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 - Scope — `src/agenthon/ui/chat.py`, `tests/test_chat.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
-- Done when — L'anteprima è editabile e distingue i livelli di gravità. Le tre azioni usano il proxy e mostrano revisione, errore o risposta in chat.
+- Done when — L'anteprima è editabile, distingue i livelli di gravità e resta visibile accanto alle segnalazioni sulle informazioni mancanti. Le azioni suggerite compaiono solo per i dettagli ad alto impatto. Le tre azioni di revisione usano il proxy e mostrano revisione, errore o risposta in chat.
 - Delivery notes —
 
 ## T6 — Dashboard admin (UI) · TODO
@@ -55,5 +55,5 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 - Scope — `src/agenthon/__init__.py`, `src/agenthon/ui/app.py`, `README.md`, `pyproject.toml`, `uv.lock`.
 - Dipende da — T4, T5, T6. Concordare le dipendenze prima di aggiungerle.
-- Done when — `uv run agenthon` apre la demo. I casi sintetici e gli errori simulati si verificano seguendo il README.
+- Done when — `uv run agenthon` apre la demo. I casi sintetici e gli errori simulati si verificano seguendo il README. Prompt, anteprime, suggerimenti, risposte ed entrambe le viste sono in inglese.
 - Delivery notes —

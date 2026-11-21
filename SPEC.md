@@ -10,12 +10,12 @@ Un proxy analizza ogni richiesta, inoltra direttamente quelle senza rilevazioni 
 
 ## Flusso della demo
 
-1. La chat manda il prompt al proxy. Il rilevatore PII gira in locale e riconosce nomi, email, telefoni e codici fiscali italiani.
+1. La chat manda il prompt al proxy. Il rilevatore PII gira in locale e riconosce nomi, email, telefoni e identificativi fiscali statunitensi come gli SSN nei prompt demo in inglese.
 2. Se il controllo termina senza rilevazioni, il proxy chiama DeepSeek e restituisce la risposta alla chat. Se l'analisi fallisce o ha esito incerto, passa la richiesta in revisione senza chiamare il modello.
-3. Se trova PII, il proxy sostituisce i valori con segnaposto come `[NOME_1]` e `[EMAIL_1]`. La mappa segnaposto → valore originale vive in memoria nel proxy per la durata della revisione.
-4. Il componente Rephrase gira dentro il proxy. Usa il prompt oscurato e le categorie per recuperare, se serve, un ruolo generico già esplicito, per esempio `[NOME_1] è il referente del progetto`. Altrimenti conserva il prompt oscurato. Prima di restituire il risultato, usa la mappa in memoria per verificare che i segnaposto restino presenti e i valori rimossi non ricompaiano.
-5. Suggestion assegna a ogni segnaposto una gravità e propone un'azione. Può suggerire di generalizzare un dettaglio, rimuoverlo o aggiungere contesto non identificativo.
-6. La chat mostra la proposta con etichette colorate e trattiene la richiesta fino alla scelta dell'utente. **Invia versione oscurata** approva il testo visibile. **Modifica** apre un editor e il proxy ricontrolla il testo prima di ogni invio. **Usa modello locale (simulato con DeepSeek)** percorre una rotta distinta e invia a DeepSeek la stessa proposta oscurata mostrata all'utente.
+3. Se trova PII, il proxy sostituisce i valori con segnaposto come `[NAME_1]` e `[EMAIL_1]` nell’anteprima della demo. La mappa segnaposto → valore originale vive in memoria nel proxy per la durata della revisione.
+4. Rephrase gira dentro il proxy e ristruttura il prompt oscurato attorno all'obiettivo della richiesta. Se l'oscuramento toglie informazioni utili, organizza i fatti disponibili in un contesto generico o in un caso di studio ipotetico, indicato come tale. Dove mancano dati necessari, può formulare la richiesta per scenari o chiedere una risposta condizionata a quei dati. Propone comunque un testo utilizzabile e individua le informazioni mancanti da segnalare nella revisione. Il proxy verifica con la mappa in memoria che i segnaposto restino presenti e che i valori rimossi non ricompaiano.
+5. Suggestion segnala le informazioni mancanti e spiega che cosa limitano nella risposta. Propone un'azione solo quando rendere disponibile una versione non identificativa del dettaglio potrebbe migliorare in modo sostanziale il risultato atteso. Per esempio, per un piano di turni può suggerire di indicare fasce orarie e competenze al posto dei nominativi. La gravità del dato privato e l'utilità del contesto per la risposta sono valutazioni distinte.
+6. La chat mostra la proposta con etichette colorate e trattiene la richiesta fino alla scelta dell'utente. **Send redacted version** approva il testo visibile. **Edit** apre un editor e il proxy ricontrolla il testo prima di ogni invio. **Use local model (simulated with DeepSeek)** percorre una rotta distinta e invia a DeepSeek la stessa proposta oscurata mostrata all'utente.
 7. La dashboard mostra ogni richiesta dal momento in cui arriva al proxy. Il dettaglio mostra il prompt originale, quello inviato al modello e la risposta quando disponibili. Il flag di rischio scatta al primo rilevamento PII e resta visibile dopo eventuali modifiche, approvazione o scelta della rotta locale simulata.
 
 ## Componenti e contratti proposti
@@ -23,8 +23,8 @@ Un proxy analizza ogni richiesta, inoltra direttamente quelle senza rilevazioni 
 | Componente | Input | Output JSON |
 |---|---|---|
 | PII | Prompt originale nel proxy | Testo oscurato, segnaposto tipizzati, stato e confidenza. L'associazione ai valori originali resta nel proxy. |
-| Rephrase | Testo oscurato e segnaposto tipizzati | Testo proposto, indicatore di modifica e confidenza. |
-| Suggestion | Testo proposto e segnaposto tipizzati | Elenco di suggerimenti per segnaposto, con gravità e confidenza. |
+| Rephrase | Testo oscurato e segnaposto tipizzati | Testo ristrutturato, informazioni mancanti, indicatore di modifica e confidenza. |
+| Suggestion | Testo proposto, segnaposto tipizzati e informazioni mancanti | Segnalazioni sulle informazioni mancanti e azioni facoltative per i dettagli ad alto impatto, con confidenza. |
 | Proxy | Richiesta o scelta dell'utente | ID, stato (`completed`, `review_required`, `failed`) e payload adatto allo stato. |
 | Dashboard admin | Cronologia del proxy | Richieste, risposte disponibili e flag di rischio per richiesta. |
 | Trace | Esito di ogni passaggio | Timestamp, ID richiesta, agente, input/output sintetici, azione e confidenza. |
@@ -33,8 +33,10 @@ I passaggi si scambiano JSON validato secondo i contratti in `schemas/`, incluso
 
 ## Interfaccia
 
-- **Dipendente.** Chat principale e scheda di revisione inline con anteprima esatta del testo da inviare. Ogni etichetta mostra la categoria e la gravità in testo e colore, con il relativo suggerimento accanto. Il testo da approvare si può modificare nella stessa scheda.
-- **Admin.** Tabella di tutte le richieste, ordinate dalla più recente, con colonne per orario, ID, stato, rotta e flag **Rischio PII**. La riga apre prompt originale, prompt inviato, risposta del modello e trace. Le richieste in attesa o fallite mostrano lo stato anche quando la risposta manca. I filtri per rischio, gravità e stato sono P1.
+La demo si svolge interamente in inglese. Questo vale per prompt ed esempi, anteprime, suggerimenti, messaggi di stato ed errore, etichette e azioni di entrambe le viste. Entrambe le rotte chiedono a DeepSeek di rispondere in inglese senza alterare il testo approvato dall’utente.
+
+- **Dipendente.** Chat principale e scheda di revisione inline con anteprima esatta del testo da inviare. Le etichette mostrano categoria e gravità in testo e colore. Accanto all'anteprima, la scheda indica quali informazioni mancano e come la loro assenza limita la risposta. Mostra un'azione solo dove il contesto aggiuntivo può migliorare sensibilmente il risultato. La proposta resta disponibile anche quando alcuni dati mancano. Il testo da approvare si può modificare nella stessa scheda.
+- **Admin.** Tabella di tutte le richieste, ordinate dalla più recente, con colonne per orario, ID, stato, rotta e flag **PII Risk**. La riga apre prompt originale, prompt inviato, risposta del modello e trace. Le richieste in attesa o fallite mostrano lo stato anche quando la risposta manca. I filtri per rischio, gravità e stato sono P1.
 - **Base UI.** Riutilizzare i componenti Python di Gradio Blocks per chat, scheda di revisione e tabella. La demo espone le due viste come sezioni distinte. [Gradio Blocks](https://gradio.app/docs/gradio/blocks) · [Gradio Dataframe](https://gradio.app/docs/gradio/dataframe)
 
 ## Priorità
@@ -49,4 +51,4 @@ Proxy trasparente per client terzi, autenticazione e ruoli reali, allegati, pers
 
 ## Demo e criteri di riuscita
 
-Replay dei casi sintetici in `data/demo/requests.json`. La richiesta pulita produce una risposta senza revisione e compare in dashboard senza flag. Quella con PII resta in attesa, mostra segnaposto e suggerimenti, e compare con il flag prima della risposta. Una modifica che reintroduce PII apre una nuova revisione. L'invio approvato e la rotta locale simulata usano il testo esatto mostrato nella scheda. La dashboard mostra le risposte, distingue le due rotte e conserva il flag dopo l'esecuzione.
+Replay dei casi sintetici in `data/demo/requests.json`. La richiesta pulita produce una risposta senza revisione e compare in dashboard senza flag. Quella con PII resta in attesa e compare con il flag prima della risposta. Se l'oscuramento toglie contesto utile, la scheda mostra comunque una proposta ristrutturata, indica le informazioni mancanti e suggerisce azioni solo per i dettagli ad alto impatto. Una modifica che reintroduce PII apre una nuova revisione. L'invio approvato e la rotta locale simulata usano il testo esatto mostrato nella scheda. La dashboard mostra le risposte, distingue le due rotte e conserva il flag dopo l'esecuzione.

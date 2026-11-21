@@ -2,11 +2,11 @@
 
 ## D1 — PII in locale
 
-Proposta per P0: spaCy `it_core_news_sm` per i nomi, pattern Python per email, telefono e codice fiscale. La demo parte in italiano. [Modelli italiani di spaCy](https://spacy.io/models/it/)
+Per P0 il rilevatore locale usa il modello inglese spaCy `en_core_web_sm` per i nomi e pattern Python per email, numeri di telefono e identificativi fiscali statunitensi come gli SSN. L’intera demo si svolge in inglese. [Modelli inglesi di spaCy](https://spacy.io/models/en/)
 
 ## D2 — Rephrase e Suggestion nel proxy
 
-Due componenti Python con interfacce JSON e regole deterministiche per P0. Rephrase usa il contesto già presente nel prompt oscurato. Suggestion propone interventi per tipo di entità e lascia la scelta al dipendente.
+Due componenti Python con interfacce JSON e regole deterministiche per P0. Rephrase ristruttura il prompt oscurato per compensare le informazioni sottratte, usando contesto generico, casi ipotetici espliciti o richieste condizionate ai dati mancanti. La proposta distingue i fatti disponibili dalle ipotesi. Suggestion segnala le informazioni mancanti e propone azioni solo quando aggiungere contesto non identificativo avrebbe un impatto rilevante sulla risposta. La scelta resta al dipendente.
 
 ## D3 — Un provider reale e una rotta simulata
 

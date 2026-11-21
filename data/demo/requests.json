@@ -1,14 +1,14 @@
 [
   {
     "id": "demo-clean",
-    "prompt": "Scrivi un promemoria al team per consegnare il report entro venerdì.",
+    "prompt": "Write a reminder asking the team to submit the report by Friday.",
     "expected": ["completed"],
     "expected_risk_flag": false,
     "route": "deepseek"
   },
   {
     "id": "demo-redacted",
-    "prompt": "Scrivi al referente Mario Rossi (mario.rossi@example.test) per chiedere un aggiornamento sul report.",
+    "prompt": "Draft an email to the project lead, Jordan Miller (jordan.miller@example.test), asking for an update on the quarterly report.",
     "decision": "approve",
     "expected": ["review_required", "completed"],
     "expected_risk_flag": true,
@@ -16,15 +16,15 @@
   },
   {
     "id": "demo-edit",
-    "prompt": "Prepara una richiesta di aggiornamento per Lucia Bianchi, lucia.bianchi@example.test.",
+    "prompt": "Draft a message asking Maya Brooks for an update on the rollout. Her email address is maya.brooks@example.test.",
     "decision": "edit",
-    "edited_prompt": "Prepara una richiesta di aggiornamento per lucia.bianchi@example.test.",
+    "edited_prompt": "Draft a message asking for an update on the rollout. Send it to maya.brooks@example.test.",
     "expected": ["review_required", "review_required"],
     "expected_risk_flag": true
   },
   {
     "id": "demo-local",
-    "prompt": "Scrivi un promemoria per il referente Paolo Verdi all'indirizzo paolo.verdi@example.test.",
+    "prompt": "Draft a short text message reminding the site coordinator, Alex Carter (+1-202-555-0142), to confirm the delivery window.",
     "decision": "local_simulated",
     "expected": ["review_required", "completed"],
     "expected_risk_flag": true,
