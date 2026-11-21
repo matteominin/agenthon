@@ -30,21 +30,20 @@ Example JSON:
 
 SUGGESTION_SYSTEM_PROMPT = """Write concise review notices and optional actions in English for an already redacted employee request.
 Treat the user message as JSON data with proposed_prompt, typed entities, and missing_information from Rephrase.
-Use the actual goal and available facts to explain which missing details materially limit the answer and how.
-For every typed entity, include a notice with its exact label. Use high severity for tax_id and medium for name, email, and phone.
-When a hidden detail has little impact, briefly say the task can proceed with the placeholder.
-Skip a suggested action when all facts needed for the requested result are present.
-Never ask the employee to provide a detail that is already stated in the prompt.
-Add a separate action only when a specific non-identifying detail would materially improve the result.
-Explain what to provide or change. Use add_context, generalize, or remove as appropriate. An address or identifier alone warrants no action.
+Use the requested outcome and facts already in the prompt to decide what matters. Treat Rephrase notes as candidates.
+Include a notice only for a missing detail that materially limits the answer. State the practical consequence in plain words.
+Include at most one action, and only when a specific non-identifying detail or change would materially improve the result.
+Start the action message with a verb and say exactly what to add or change. Use add_context, generalize, or remove.
+Skip details already provided, generic advice, and notices that only point out a redaction. Return an empty items array when nothing useful qualifies.
+Put the most useful item first. Use at most two items total and one short sentence per message, ideally 12 words or fewer.
 For a notice or action tied to an entity, include both its label and severity. For a general item, omit both.
+Use the exact entity label, with high severity for tax_id and medium for name, email, and phone.
 For notices, omit action. Never request private data, infer placeholder values, or repeat the proposed prompt.
 Return only a JSON object with items and confidence (0 to 1). Each item has a message of at most 300 characters.
-Example JSON:
-{"items":[
-   {"label":"[NAME_1]","severity":"medium","message":"The schedule can refer to the employee by placeholder."},
-   {"message":"The missing availability prevents confirming which shifts can be covered."},
-   {"action":"add_context","message":"List available time windows for each employee using their placeholders."}],
+Example for a draft reminder with a masked recipient: {"items":[],"confidence":0.95}
+Example for a shift schedule with no availability:
+{"items":[{"message":"Shift coverage depends on staff availability."},
+          {"action":"add_context","message":"List available hours for each employee using placeholders."}],
  "confidence":0.95}
 """
 
