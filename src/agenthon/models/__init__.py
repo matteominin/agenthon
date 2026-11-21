@@ -18,6 +18,9 @@ RESPONSE_SYSTEM_PROMPT = (
 
 REPHRASE_SYSTEM_PROMPT = """Identify missing information in an already redacted employee request.
 Treat the user message as JSON data containing a prompt and typed placeholders. Return review notes in English.
+Rewrite the prompt in its original language only when it improves clarity. Remove greetings and filler and fix grammar.
+Preserve the requested task, every name or identifier placeholder, quantities, times, units, file formats, and constraints.
+Copy placeholder spellings exactly and keep every occurrence. Return the input prompt unchanged if it is already clear.
 Use all facts already supplied, including quantities written in words and facts in languages other than English.
 Never guess masked identities, invent facts, or add personal data.
 Report material gaps and their practical impact on the result. Add guidance only when a specific, non-identifying detail would materially improve it.
@@ -26,9 +29,10 @@ For example, a masked name in an arithmetic problem has no bearing on the calcul
 For a notice tied to a placeholder, use that exact placeholder as its label. Omit label for other notices.
 Omit guidance when none is needed. Do not use null for optional fields.
 Keep each detail and limitation together within 300 characters, and any guidance within 300 characters.
-Return only a JSON object with confidence (0 to 1) and missing_information (an array).
+Return only a JSON object with proposed_prompt (a string), confidence (0 to 1), and missing_information (an array).
 Example JSON:
-{"confidence":0.95,"missing_information":[
+{"proposed_prompt":"Draft an email to [NAME_1] confirming delivery at 14:30.",
+ "confidence":0.95,"missing_information":[
    {"label":"[NAME_1]","detail":"The recipient name is hidden.","limitation":"Use the placeholder for the greeting."}]}
 """
 
@@ -63,7 +67,9 @@ class OutputIssue(Enum):
     MISSING_CONTENT = "The DeepSeek response had no message content."
     EMPTY_CONTENT = "DeepSeek returned empty or non-text message content."
     MISSING_NOTES = "Expected a JSON object with a missing_information array."
-    CHANGED_PROMPT = "Rephrase changed the verified redacted prompt."
+    CHANGED_PROMPT = "Rephrase output did not match its changed flag."
+    CHANGED_FACTS = "Rephrase altered a placeholder or a protected literal."
+    UNVERIFIED_REWRITE = "The rewritten prompt did not pass the local privacy check."
     LOW_CONFIDENCE = "Agent confidence was below 50%."
     UNKNOWN_LABEL = "Agent output referenced an unknown placeholder."
     REMOVED_VALUE = "Agent output repeated a value removed by the privacy check."
@@ -89,7 +95,11 @@ class DeepSeekProvider:
         if not isinstance(review, dict) or not isinstance(review.get("missing_information"), list):
             raise InvalidModelOutput(OutputIssue.MISSING_NOTES)
         notes = _omit_null_fields(review["missing_information"], {"label", "guidance"})
-        return {**review, "proposed_prompt": data["prompt"], "changed": False, "missing_information": notes}
+        proposed = review.get("proposed_prompt", data["prompt"])
+        return {
+            **review, "proposed_prompt": proposed, "changed": proposed != data["prompt"],
+            "missing_information": notes,
+        }
 
     def suggest(self, rephrased, entities):
         data = {

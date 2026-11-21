@@ -15,6 +15,11 @@ from .contracts import ContractError, validate_contract
 
 _PLACEHOLDER = re.compile(r"\[[A-Z]+(?:_[A-Z]+)*_[1-9][0-9]*\]")
 
+_PROTECTED_LITERAL = re.compile(
+    r"\d+(?:[.,:/-]\d+)*|\b(?:jpe?g|png|pdf|tiff?|gif|webp|docx?|xlsx?|pptx?|csv|zip)\b",
+    re.IGNORECASE,
+)
+
 
 class _StageFailure(Exception):
     def __init__(self, reason):
@@ -209,8 +214,15 @@ class Proxy:
             validate_contract("agents", result, "rephrase")
             proposed = result["proposed_prompt"]
             missing = result.get("missing_information", [])
-            if proposed != redacted or result["changed"]:
+            changed = proposed != redacted
+            if changed != result["changed"]:
                 raise InvalidModelOutput(OutputIssue.CHANGED_PROMPT)
+            if changed and (
+                Counter(_PLACEHOLDER.findall(proposed)) != Counter(_PLACEHOLDER.findall(redacted))
+                or Counter(_PROTECTED_LITERAL.findall(_PLACEHOLDER.sub(" ", proposed).casefold()))
+                != Counter(_PROTECTED_LITERAL.findall(_PLACEHOLDER.sub(" ", redacted).casefold()))
+            ):
+                raise InvalidModelOutput(OutputIssue.CHANGED_FACTS)
             if result["confidence"] < 0.5:
                 raise InvalidModelOutput(OutputIssue.LOW_CONFIDENCE)
             if any(item.get("label") not in allowed_labels for item in missing):
@@ -220,15 +232,20 @@ class Proxy:
             if (_contains_removed_value(proposed, known_values.values())
                     or any(_contains_removed_value(text, known_values.values()) for text in note_text)):
                 raise InvalidModelOutput(OutputIssue.REMOVED_VALUE)
+            if changed:
+                verified, _ = self._detect(proposed, known_values)
+                if verified["status"] != "clear" or verified["confidence"] < 0.5:
+                    raise InvalidModelOutput(OutputIssue.UNVERIFIED_REWRITE)
             return result
 
         revised = self._attempt(request_id, "rephrase", rephrase_checked, metadata)
         notes = revised.get("missing_information", [])
         guidance_count = sum("guidance" in note for note in notes)
+        rewrite = "Redacted prompt clarified." if revised["changed"] else "Redacted prompt preserved."
         self._trace.record(
             request_id, "rephrase", "rephrase", input=metadata, output={"status": "completed"},
             confidence=revised["confidence"],
-            summary=f"Redacted prompt preserved. Notes: {len(notes)}. Notes with guidance: {guidance_count}.",
+            summary=f"{rewrite} Notes: {len(notes)}. Notes with guidance: {guidance_count}.",
         )
 
         def suggest_checked():

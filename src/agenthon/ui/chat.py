@@ -63,21 +63,57 @@ def _parse_command(text):
     return None
 
 
+ANSWER_MARKDOWN = MarkdownIt("commonmark", {"html": True}).enable(["table", "strikethrough"])
+ANSWER_URL = re.compile(r"\b(?:[a-z][a-z0-9+.-]*://|mailto:|www\.)[^\s<>\"']+", re.IGNORECASE)
+MARKDOWN_PUNCTUATION = re.compile(r"([\\`*_\[\]<>|~])")
+
+
 def _restore_answer(answer, sent_prompt, originals):
-    used = set(REDACTED_LABEL.findall(sent_prompt))
-
-    def restore(match):
-        label = match[0]
-        return originals.get(label, label) if label in used else label
-
-    restored = REDACTED_LABEL.sub(restore, answer)
-    if restored == answer:
+    used = set(REDACTED_LABEL.findall(sent_prompt)) & originals.keys()
+    if not used:
         return answer
 
-    # Render restored data as literal text so values cannot become URLs or
-    # image sources even when the model puts a placeholder inside Markdown.
-    fence = "~" * max(3, 1 + max(map(len, re.findall(r"~+", restored)), default=0))
-    return f"{fence}text\n{restored}\n{fence}"
+    prefix = "tdbrestore" + secrets.token_hex(8)
+    markers = re.compile(prefix + r"[0-9]+end")
+    replacements = {}
+
+    def mark(match):
+        label = match[0]
+        if label not in used:
+            return label
+        marker = f"{prefix}{len(replacements)}end"
+        replacements[marker] = label
+        return marker
+
+    marked = REDACTED_LABEL.sub(mark, answer)
+    if not replacements:
+        return answer
+
+    # Only restore display text, never fetch destinations or raw HTML.
+    hidden = set()
+    for url in ANSWER_URL.finditer(marked):
+        hidden.update(markers.findall(url[0]))
+    code = set()
+    for block in ANSWER_MARKDOWN.parse(marked):
+        for token in (block, *(block.children or ())):
+            for attr in ("href", "src"):
+                hidden.update(markers.findall(token.attrGet(attr) or ""))
+            if token.type in ("html_block", "html_inline"):
+                hidden.update(markers.findall(token.content))
+            if token.type in ("code_inline", "code_block", "fence"):
+                code.update(markers.findall(token.content))
+
+    def restore(match):
+        marker = match[0]
+        label = replacements[marker]
+        if marker in hidden:
+            return label
+        value = " ".join(originals[label].splitlines())
+        if marker in code:
+            return label if "`" in value or "~~~" in value else value
+        return MARKDOWN_PUNCTUATION.sub(r"\\\1", value)
+
+    return markers.sub(restore, marked)
 
 
 # Render user-authored Markdown as local text, including URLs and image syntax.

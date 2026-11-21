@@ -180,7 +180,7 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(attempts, ["retry", "fail"])
         self.assertFalse(self.calls)
 
-    def test_rephrase_cannot_alter_the_redacted_text(self):
+    def test_rephrase_rejects_an_undeclared_change(self):
         for transform in (
             lambda prompt: prompt + "\n",
             lambda prompt: prompt.replace("[NAME_1]", "the lead"),
@@ -204,6 +204,30 @@ class ProxyTests(unittest.TestCase):
                             if event["agent"] == "rephrase"]
                 self.assertEqual(attempts, ["retry", "fail"])
                 self.assertFalse(self.calls)
+
+    def test_rephrase_checks_clarified_text_before_approval(self):
+        prompt = 'Hey brah, convert contract ID "CT-837xy" from JPG to PDF and keep the filename.'
+        proposed = 'Convert contract [CONTRACT_ID_1] from JPG to PDF using its ID as the filename.'
+        for text in (
+            proposed,
+            proposed.replace("PDF", "PNG"),
+            proposed.replace("[CONTRACT_ID_1]", "[CONTRACT_ID_2]"),
+            proposed + " Send a copy to ops@example.test.",
+        ):
+            with self.subTest(text=text):
+                def rewrite(data):
+                    return {"proposed_prompt": text, "changed": True, "confidence": 1}
+
+                proxy = Proxy(self.provider, detector=self.detector, rephraser=rewrite)
+                result = proxy.submit({"prompt": prompt})
+                self.assertFalse(self.calls)
+                if text != proposed:
+                    self.assertEqual(result["allowed_actions"], ["edit"])
+                    continue
+                self.assertEqual(result["proposed_prompt"], proposed)
+                proxy.decide(choice(result))
+                self.assertEqual(self.calls, [(proposed, "deepseek")])
+                self.calls.clear()
 
     @unittest.skipUnless(find_spec("en_core_web_sm"), "The local spaCy model is unavailable.")
     def test_clean_italian_prompt_is_sent_as_written(self):
@@ -368,8 +392,8 @@ class DeepSeekTests(unittest.TestCase):
             "Her email address is [EMAIL_1]."
         )
         review_notes = {
-            "proposed_prompt": "Draft a brief update to [NAME_1] with [EMAIL_1] as a reference.",
-            "changed": True,
+            "proposed_prompt": proposal,
+            "changed": False,
             "confidence": 0.95,
             "missing_information": [{
                 "label": "[EMAIL_1]",

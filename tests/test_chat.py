@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from agenthon.pii import PIIDetector
 from agenthon.proxy import Proxy
-from agenthon.ui.chat import BUTTONS, Chat, review_card
+from agenthon.ui.chat import BUTTONS, Chat, _restore_answer, review_card
 from agenthon.ui.openwebui_pipe import Pipe
 from test_contracts import ROOT
 from test_proxy import find_names
@@ -121,6 +121,21 @@ class ChatTests(unittest.TestCase):
 
         self.assertIn(f"To {phone} and {email}", answer)
         self.assertEqual(proxy.history()[0]["sent_prompt"], "Draft a text to [PHONE_1] and an email to [EMAIL_1].")
+
+    def test_restoration_preserves_markdown_and_leaves_link_destinations_anonymized(self):
+        label = "[CONTRACT_ID_1]"
+        answer = (
+            f"**Convert** `{label}.jpg` to PDF.\n\n"
+            f"- Output: `{label}.pdf`\n"
+            f"- ![preview](https://example.test/{label}.jpg)\n"
+            f"- [Archive](?id={label})\n"
+            f'<img src="/?id={label}">'
+        )
+        restored = _restore_answer(answer, f"Convert {label}.", {label: "CT_837xy"})
+        self.assertEqual(
+            restored,
+            answer.replace(f"`{label}.jpg`", "`CT_837xy.jpg`").replace(f"`{label}.pdf`", "`CT_837xy.pdf`"),
+        )
 
     def test_contract_id_is_reviewed_and_restored_in_the_filename(self):
         contract_id = "837xy2789c2c2kl"

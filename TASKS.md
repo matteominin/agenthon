@@ -44,7 +44,7 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Scope — `src/agenthon/ui/chat.py`, `src/agenthon/ui/openwebui_pipe.py`, `tests/test_chat.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — L'anteprima è editabile, distingue i livelli di gravità. La scheda mostra il riquadro delle azioni suggerite solo quando ci sono azioni per dettagli ad alto impatto. Le tre azioni di revisione usano il proxy e mostrano revisione, errore o risposta in chat.
-- Delivery notes — Pipe Open WebUI in `src/agenthon/ui/openwebui_pipe.py`, anteprima Markdown interattiva ed editor in `src/agenthon/ui/review.html`. La conferma nasconde il riferimento tecnico. La chat ripristina nella risposta i valori associati ai segnaposto effettivamente inviati.
+- Delivery notes — Pipe Open WebUI in `src/agenthon/ui/openwebui_pipe.py`, anteprima Markdown interattiva ed editor in `src/agenthon/ui/review.html`. La conferma nasconde il riferimento tecnico. La chat ripristina i valori associati ai segnaposto nel testo della risposta e conserva il Markdown.
   I test verificano i quattro casi demo e l'aggiunta di una nuova email durante la modifica, con il proxy e un provider di test.
   Eseguire `PYTHONPATH=src uv run --no-project --with markdown-it-py --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
 
@@ -66,6 +66,6 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 - Scope — `src/agenthon/{pii,rephrase,models,proxy}/`, `src/agenthon/ui/chat.py`, `tests/test_{pii,rephrase,proxy,chat}.py`, `data/demo/review-cases.json`, `SPEC.md`.
 - Done when — L'apertura italiana «Se ho» resta intatta e il testo proposto conserva lingua e contenuto attorno ai segnaposto.
-- Delivery notes — Corretto il falso positivo di spaCy e mantenuto il testo oscurato esatto nella proposta. Rephrase e Suggestion alimentano gli avvisi.
+- Delivery notes — Rephrase chiarisce il testo oscurato quando serve. Il proxy valida segnaposto e dettagli operativi prima di presentare la proposta.
   Gli otto casi in `data/demo/review-cases.json` includono prompt, anteprime attese e verifiche per la UI.
   Con le dipendenze demo, eseguire `PYTHONPATH=src:tests python -m unittest test_pii test_rephrase test_proxy test_chat`.
