@@ -18,6 +18,8 @@ DeepSeek via API gestisce sia la rotta normale sia la simulazione del modello lo
 
 Il proxy conserva mappa dei valori, testo e risposte in memoria. La mappa scade con la revisione, la cronologia admin con la sessione demo. Il trace JSONL conserva solo metadati. La vista admin della demo include il prompt originale e usa dati sintetici.
 
+Il proxy consuma atomicamente la coppia `request_id` e `revision` prima del ricontrollo o dell’invio, così ogni revisione può produrre un solo invio.
+
 ## D5 — UI riusabile
 
 Gradio Blocks è la base proposta per le viste dipendente e admin. Si riusano i componenti chat e tabella. L'approvazione resta un passaggio esplicito con le azioni nella scheda.
