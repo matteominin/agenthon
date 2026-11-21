@@ -10,7 +10,7 @@ Un proxy analizza ogni richiesta, inoltra direttamente quelle senza rilevazioni 
 
 ## Flusso della demo
 
-1. La chat manda il prompt al proxy. Il rilevatore PII gira in locale e riconosce nomi, email, telefoni e identificativi fiscali statunitensi come gli SSN nei prompt demo in inglese.
+1. La chat manda il prompt al proxy. Il rilevatore PII gira in locale e riconosce nomi, email, telefoni e identificativi fiscali statunitensi come gli SSN e ID di contratto esplicitamente etichettati nei prompt demo.
 2. Se il controllo termina senza rilevazioni, il proxy chiama DeepSeek e restituisce la risposta alla chat. Se l'analisi fallisce o ha esito incerto, passa la richiesta in revisione senza chiamare il modello.
 3. Se trova PII, il proxy sostituisce i valori con segnaposto come `[NAME_1]` e `[EMAIL_1]` nell’anteprima della demo. La mappa segnaposto → valore originale vive in memoria nel proxy per la durata della revisione.
 4. Rephrase individua le informazioni mancanti da segnalare nella revisione. Il proxy propone il testo originale con i soli dati sensibili sostituiti da segnaposto, conservando lingua, formulazione e dettagli disponibili.

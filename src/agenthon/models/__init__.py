@@ -12,6 +12,7 @@ RESPONSE_SYSTEM_PROMPT = (
     "state the necessary assumption or give conditional guidance. "
     "Preserve the exact spelling of relevant redaction placeholders and never infer their values. "
     "When drafting a message for an explicitly specified recipient placeholder, put it in a separate To line. "
+    "If the user asks to name a file using a redacted identifier, use its exact placeholder in the filename. "
     "Avoid adding a sender name or placeholder unless it is needed or requested."
 )
 
@@ -41,7 +42,7 @@ Start the action message with a verb and say exactly what to add or change. Use 
 Skip details already provided, generic advice, and notices that only point out a redaction. Return an empty items array when nothing useful qualifies.
 Put the most useful item first. Use at most two items total and one short sentence per message, ideally 12 words or fewer.
 For a notice or action tied to an entity, include both its label and severity. For a general item, omit both.
-Use the exact entity label, with high severity for tax_id and medium for name, email, and phone.
+Use the exact entity label, with high severity for tax_id and medium for name, email, phone, and contract_id.
 For notices, omit action. Do not use null for optional fields.
 Never request private data, infer placeholder values, or repeat the proposed prompt.
 Return only a JSON object with items and confidence (0 to 1). Each item has a message of at most 300 characters.

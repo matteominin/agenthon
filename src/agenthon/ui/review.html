@@ -49,7 +49,7 @@ const originals=new Map(Array.from(document.querySelectorAll('.original'),el=>[e
 const walker=document.createTreeWalker(preview,NodeFilter.SHOW_TEXT), nodes=[];
 while(walker.nextNode())nodes.push(walker.currentNode);
 for(const node of nodes){
- const parts=node.textContent.split(/(\[(?:NAME|EMAIL|PHONE|SSN)_[1-9][0-9]*\])/g);
+ const parts=node.textContent.split(/(\[(?:NAME|EMAIL|PHONE|SSN|CONTRACT_ID)_[1-9][0-9]*\])/g);
  if(!parts.some(p=>originals.has(p)))continue;
  node.replaceWith(...parts.map(part=>{
    if(!originals.has(part))return document.createTextNode(part);

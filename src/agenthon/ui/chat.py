@@ -16,7 +16,7 @@ BUTTONS = {
     "edit": "Check edited prompt",
     "local_simulated": "Use local model (simulated with DeepSeek)",
 }
-CATEGORIES = {"name": "Name", "email": "Email", "phone": "Phone", "tax_id": "Tax ID"}
+CATEGORIES = {"name": "Name", "email": "Email", "phone": "Phone", "tax_id": "Tax ID", "contract_id": "Contract ID"}
 REASONS = {
     "pii_found": "Personal information was detected.",
     "uncertain_detection": "The privacy check was inconclusive.",
@@ -44,7 +44,7 @@ TAGGED_COMMAND = re.compile(
     r"(" + "|".join(re.escape(label) for label in BUTTONS.values()) +
     r")(?:\n\n([\s\S]*))?\U000e0001([\U000e0020-\U000e007e]{16})\U000e007f\Z"
 )
-REDACTED_LABEL = re.compile(r"\[(?:NAME|EMAIL|PHONE|SSN)_[1-9][0-9]*\]")
+REDACTED_LABEL = re.compile(r"\[(?:NAME|EMAIL|PHONE|SSN|CONTRACT_ID)_[1-9][0-9]*\]")
 
 
 def _parse_command(text):

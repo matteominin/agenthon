@@ -1,7 +1,7 @@
 """Review messages and optional ways to improve a redacted request."""
 
 
-_SEVERITY = {"name": "medium", "email": "medium", "phone": "medium", "tax_id": "high"}
+_SEVERITY = {"name": "medium", "email": "medium", "phone": "medium", "tax_id": "high", "contract_id": "medium"}
 
 
 def suggest(rephrased, entities):

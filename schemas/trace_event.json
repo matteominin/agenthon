@@ -57,6 +57,10 @@
             "tax_id": {
               "type": "integer",
               "minimum": 1
+            },
+            "contract_id": {
+              "type": "integer",
+              "minimum": 1
             }
           },
           "required": [],

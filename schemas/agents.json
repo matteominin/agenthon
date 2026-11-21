@@ -13,7 +13,8 @@
         "name",
         "email",
         "phone",
-        "tax_id"
+        "tax_id",
+        "contract_id"
       ]
     },
     "severity": {
@@ -25,7 +26,7 @@
     },
     "label": {
       "type": "string",
-      "pattern": "^\\[(NAME|EMAIL|PHONE|SSN)_[1-9][0-9]*\\]$"
+      "pattern": "^\\[(NAME|EMAIL|PHONE|SSN|CONTRACT_ID)_[1-9][0-9]*\\]$"
     },
     "entity": {
       "type": "object",

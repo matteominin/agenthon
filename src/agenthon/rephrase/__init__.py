@@ -32,6 +32,10 @@ _CONTACT_LIMITATIONS = {
     ),
     "email": ("An email address is hidden.", "Use the placeholder wherever the address is needed."),
     "phone": ("A phone number is hidden.", "Use the placeholder wherever the number is needed."),
+    "contract_id": (
+        "A contract identifier is hidden.",
+        "Use the placeholder whenever the contract reference is needed.",
+    ),
     "tax_id": (
         "A taxpayer identifier is hidden.",
         "Any step requiring an exact identity match remains conditional.",

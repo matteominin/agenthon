@@ -2,7 +2,7 @@
 
 ## D1 — PII in locale
 
-Per P0 il rilevatore locale usa il modello inglese spaCy `en_core_web_sm` per i nomi e pattern Python per email, numeri di telefono e identificativi fiscali statunitensi come gli SSN. L’intera demo si svolge in inglese. [Modelli inglesi di spaCy](https://spacy.io/models/en/)
+Per P0 il rilevatore locale usa il modello inglese spaCy `en_core_web_sm` per i nomi e pattern Python per email, numeri di telefono, identificativi fiscali statunitensi come gli SSN e ID espliciti di contratto. Gli ID di contratto usano il segnaposto `CONTRACT_ID` anche nelle occorrenze ripetute, come i nomi file. L’intera demo si svolge in inglese. [Modelli inglesi di spaCy](https://spacy.io/models/en/)
 
 ## D2 — Rephrase e Suggestion nel proxy
 

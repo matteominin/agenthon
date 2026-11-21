@@ -97,6 +97,17 @@ class PIITests(unittest.TestCase):
         self.assertEqual(payload["redacted_prompt"], prompt)
         self.assertEqual(private, {})
 
+    def test_contract_identifiers_need_context_and_keep_their_label_on_edit(self):
+        payload, private = self.detector.detect("Convert report837xy.jpg and keep the filename.")
+        self.assertEqual(payload["status"], "clear")
+        self.assertEqual(private, {})
+
+        payload, private = self.detector.detect("Convert the file for contract ID: CT-837xy.")
+        self.assertEqual(payload["entities"], [{"label": "[CONTRACT_ID_1]", "type": "contract_id"}])
+        self.assertEqual(private, {"[CONTRACT_ID_1]": "CT-837xy"})
+        revised, _ = self.detector.detect("Use CT-837xy.pdf.", private)
+        self.assertEqual(revised["redacted_prompt"], "Use [CONTRACT_ID_1].pdf.")
+
     def test_repeated_values_and_values_from_prior_review_keep_their_labels(self):
         initial, previous = self.detector.detect(
             "Jordan Miller asked Jordan Miller to email jordan@example.test."

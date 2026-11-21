@@ -122,6 +122,33 @@ class ChatTests(unittest.TestCase):
         self.assertIn(f"To {phone} and {email}", answer)
         self.assertEqual(proxy.history()[0]["sent_prompt"], "Draft a text to [PHONE_1] and an email to [EMAIL_1].")
 
+    def test_contract_id_is_reviewed_and_restored_in_the_filename(self):
+        contract_id = "837xy2789c2c2kl"
+        prompt = f'Convert my contract with id "{contract_id}" from {contract_id}.jpg to PDF.'
+        answer = "Run magick [CONTRACT_ID_1].jpg [CONTRACT_ID_1].pdf."
+
+        def provider(text, route):
+            self.sent.append((text, route))
+            return answer
+
+        proxy = Proxy(provider, detector=PIIDetector(find_names=find_names))
+        chat = Chat(proxy)
+        card = chat.turn(OWNER, prompt)["embed"]
+        self.assertIn("Contract ID", card)
+        self.assertIn('data-label="[CONTRACT_ID_1]">', card)
+        self.assertFalse(self.sent)
+
+        token, = chat.pending
+        response = chat.turn(OWNER, tagged_choice("approve", token))["message"]
+        self.assertIn(f"magick {contract_id}.jpg {contract_id}.pdf", response)
+        self.assertEqual(self.sent, [(
+            'Convert my contract with id "[CONTRACT_ID_1]" from [CONTRACT_ID_1].jpg to PDF.',
+            "deepseek",
+        )])
+        request = proxy.history()[0]
+        self.assertTrue(request["risk_flag"])
+        self.assertNotIn(contract_id, json.dumps(proxy.trace_events(request["request_id"])))
+
     def test_review_lists_originals_and_renders_safe_markdown(self):
         result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
         card = result["embed"]

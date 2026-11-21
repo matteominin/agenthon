@@ -7,7 +7,7 @@ from functools import lru_cache
 import re
 
 
-_PREFIXES = {"name": "NAME", "email": "EMAIL", "phone": "PHONE", "tax_id": "SSN"}
+_PREFIXES = {"name": "NAME", "email": "EMAIL", "phone": "PHONE", "tax_id": "SSN", "contract_id": "CONTRACT_ID"}
 _TYPES_BY_PREFIX = {prefix: kind for kind, prefix in _PREFIXES.items()}
 _LABEL = re.compile(r"\[(" + "|".join(_TYPES_BY_PREFIX) + r")_[1-9][0-9]*\]")
 _ITALIAN_CONDITIONAL_OPENING = re.compile(
@@ -32,6 +32,14 @@ _SSN = re.compile(r"(?<![\w-])[0-9]{3}-[0-9]{2}-[0-9]{4}(?![\w-])")
 _LABELED_SSN = re.compile(
     r"\b(?:SSN|social security (?:number|no\.?))"
     r"\s*(?:is\s+|[:#]\s*)?(?P<value>[0-9]{9}|[0-9]{3} [0-9]{2} [0-9]{4})(?![\w-])",
+    re.IGNORECASE,
+)
+
+_CONTRACT_ID = re.compile(
+    r"\b(?:contract\s+(?:with\s+)?(?:id|identifier)|(?:id|identificativo)\s+del\s+contratto)\b"
+    r"(?:\s+(?:is|of))?\s*[:=#]?\s*"
+    r"""(?:["“'](?P<quoted>[a-z0-9][a-z0-9_-]{2,})["”']"""
+    r"|(?P<bare>(?=[a-z0-9_-]*\d)[a-z0-9][a-z0-9_-]{2,})(?![\w-]))",
     re.IGNORECASE,
 )
 
@@ -71,6 +79,13 @@ def _without_overlaps(matches: list[_Match]) -> list[_Match]:
     return sorted(selected, key=lambda item: item.start)
 
 
+def _contract_id_matches(prompt):
+    values = {match["quoted"] or match["bare"] for match in _CONTRACT_ID.finditer(prompt)}
+    for value in values:
+        pattern = re.compile(r"(?<![\w-])" + re.escape(value) + r"(?![\w-])", re.IGNORECASE)
+        yield from (_Match(*match.span(), "contract_id") for match in pattern.finditer(prompt))
+
+
 class PIIDetector:
     def __init__(self, find_names: NameFinder | None = None):
         self._find_names = find_names
@@ -89,11 +104,12 @@ class PIIDetector:
         previous = previous or {}
         labels_in_prompt = {match[0] for match in _LABEL.finditer(prompt)}
         scan = _LABEL.sub(lambda match: " " * len(match[0]), prompt)
-        structured = [
+        structured = list(_contract_id_matches(prompt))
+        structured.extend(
             _Match(*match.span(), kind)
             for pattern, kind in ((_EMAIL, "email"), (_PHONE, "phone"), (_SSN, "tax_id"))
             for match in pattern.finditer(scan)
-        ]
+        )
         structured.extend(
             _Match(*match.span("value"), "tax_id")
             for match in _LABELED_SSN.finditer(scan)
