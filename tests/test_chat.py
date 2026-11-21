@@ -4,6 +4,8 @@ import unittest
 import gradio as gr
 from gradio.state_holder import SessionState
 
+from agenthon.pii import PIIDetector
+from agenthon.proxy import Proxy
 from agenthon.ui.chat import build_chat
 from test_contracts import ROOT, validator
 
@@ -19,12 +21,11 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         self.revision = 1
         self.result_override = None
         self.request_id = "demo-redacted"
-        self.proposal = "Draft a note to [NOME_1] without using [EMAIL_1]."
+        self.proposal = "Draft a note to [NAME_1] without using [EMAIL_1]."
         with gr.Blocks(analytics_enabled=False) as self.app:
             build_chat(
                 self.submit_request,
                 self.submit_decision,
-                missing_information=lambda _: ["The delivery date is missing <unknown>."],
             )
         self.session = SessionState(self.app)
 
@@ -36,12 +37,13 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
             "reason": "pii_found" if proposal else "uncertain_detection",
             "proposed_prompt": proposal,
             "entities": [
-                {"label": "[NOME_1]", "type": "name"},
+                {"label": "[NAME_1]", "type": "name"},
                 {"label": "[EMAIL_1]", "type": "email"},
             ] if proposal else [],
             "suggestions": [
-                {"label": "[NOME_1]", "severity": "low", "action": "generalize", "message": "Use their role."},
-                {"label": "[EMAIL_1]", "severity": "high", "action": "remove", "message": "Omit the address."},
+                {"label": "[NAME_1]", "severity": "low", "action": "generalize", "message": "Use their role."},
+                {"label": "[EMAIL_1]", "severity": "high", "message": "The recipient address was removed."},
+                {"message": "The delivery date is missing <unknown>."},
             ] if proposal else [],
             "allowed_actions": ["approve", "edit", "local_simulated"] if proposal else ["edit"],
         }
@@ -149,6 +151,27 @@ class ChatTests(unittest.IsolatedAsyncioTestCase):
         result = await self.click("Check and send edited prompt", None, review[1], "A draft")
         self.assertIn("timed out", result[5]["value"])
         self.assertEqual(result[8]["value"], "A draft")
+
+    async def test_t4_proxy_notices_and_actions_render_and_approve(self):
+        provider_calls = []
+
+        def provider(prompt, route):
+            provider_calls.append((prompt, route))
+            return "Demo answer"
+
+        proxy = Proxy(provider, detector=PIIDetector(find_names=lambda _: []))
+        with gr.Blocks(analytics_enabled=False) as self.app:
+            build_chat(proxy.submit, proxy.decide)
+        self.session = SessionState(self.app)
+
+        review = await self.send("demo-redacted")
+        self.assertIn("Missing information", review[9])
+        self.assertIn("[EMAIL_1]", review[8]["value"])
+        self.assertEqual(provider_calls, [])
+        final = await self.click("Send redacted version", None, review[1])
+        self.assertEqual(provider_calls, [(review[8]["value"], "deepseek")])
+        self.assertEqual(final[2][-1]["content"][0]["text"], "Demo answer")
+        self.assertTrue(proxy.history()[0]["risk_flag"])
 
     async def test_proxy_failure_is_visible_in_chat_view(self):
         review = await self.send("demo-redacted")

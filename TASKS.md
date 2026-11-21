@@ -44,14 +44,14 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Scope — `src/agenthon/ui/chat.py`, `tests/test_chat.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — L'anteprima è editabile, distingue i livelli di gravità e resta visibile accanto alle segnalazioni sulle informazioni mancanti. Le azioni suggerite compaiono solo per i dettagli ad alto impatto. Le tre azioni di revisione usano il proxy e mostrano revisione, errore o risposta in chat.
-- Delivery notes — `build_chat` in `src/agenthon/ui/chat.py`. Anteprima, revisioni e tre azioni verificate con fixture. Gli avvisi usano un callback provvisorio, in attesa del contratto e del proxy T4. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
+- Delivery notes — `build_chat` in `src/agenthon/ui/chat.py`. Anteprima, revisioni e tre azioni verificate con fixture. Avvisi e azioni letti dal contratto T4. Integrazione verificata con `Proxy.submit` e `Proxy.decide`. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_chat.py`.
 
 ## T6 — Dashboard admin (UI) · REVIEW
 
 - Scope — `src/agenthon/ui/admin.py`, `tests/test_admin.py`.
 - Dipende da — T0 per prototipo con fixture, T1 e T4 per integrazione.
 - Done when — Tutte le richieste compaiono subito. Il dettaglio mostra prompt originale, prompt inviato e risposta quando disponibili. Il flag si attiva al primo rilevamento PII e resta visibile dopo l'esecuzione.
-- Delivery notes — `build_admin` in `src/agenthon/ui/admin.py`. Cronologia aggiornata ogni secondo, dettaglio e flag PII verificati con fixture. Collegamento al proxy in attesa di T4. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_admin.py`.
+- Delivery notes — `build_admin` in `src/agenthon/ui/admin.py`. Cronologia aggiornata ogni secondo, dettaglio e flag PII verificati con fixture. Per collegare T4 usare `Proxy.history` e `Proxy.trace_events`. Eseguire `PYTHONPATH=src uv run --no-project --with gradio==6.32.0 --with jsonschema -- python -m unittest discover -s tests -p test_admin.py`.
 
 ## T7 — Entrypoint e prova demo (UI + Core) · TODO
 

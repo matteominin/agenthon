@@ -1,6 +1,6 @@
 """Employee chat and explicit prompt review for the TDB demo."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from html import escape
 
@@ -33,12 +33,13 @@ class _ChatState:
     messages: list[dict] = field(default_factory=list)
     review: dict | None = None
     editing: bool = False
-    missing_information: tuple[str, ...] = ()
 
 
-def _review_details(review, missing_information):
+def _review_details(review):
     suggestions = review["suggestions"]
-    severity_by_label = {item["label"]: item["severity"] for item in suggestions}
+    severity_by_label = {
+        item["label"]: item["severity"] for item in suggestions if "label" in item
+    }
     sections = []
     if review["entities"]:
         badges = []
@@ -56,32 +57,34 @@ def _review_details(review, missing_information):
             )
         sections.append("<h4>Detected information</h4><ul>" + "".join(badges) + "</ul>")
 
-    if missing_information:
-        notices = "".join(f"<li>{escape(message)}</li>" for message in missing_information)
-        sections.append("<h4>Missing information</h4><ul>" + notices + "</ul>")
+    notices = [
+        f"<li>{escape(item['message'])}</li>" for item in suggestions if "action" not in item
+    ]
+    if notices:
+        sections.append("<h4>Missing information</h4><ul>" + "".join(notices) + "</ul>")
 
-    if suggestions:
-        items = "".join(
-            f"<li><strong>{ACTIONS[item['action']]}</strong> "
-            f"<code>{escape(item['label'])}</code> · {escape(item['message'])}</li>"
-            for item in suggestions
+    actions = []
+    for item in suggestions:
+        if "action" not in item:
+            continue
+        label = f" <code>{escape(item['label'])}</code>" if "label" in item else ""
+        actions.append(
+            f"<li><strong>{ACTIONS[item['action']]}</strong>{label} · {escape(item['message'])}</li>"
         )
-        sections.append("<h4>Suggested actions</h4><ul>" + items + "</ul>")
+    if actions:
+        sections.append("<h4>Suggested actions</h4><ul>" + "".join(actions) + "</ul>")
     return "".join(sections)
 
 
 def build_chat(
     submit_request: Callable[[dict], dict],
     submit_decision: Callable[[dict], dict],
-    *,
-    missing_information: Callable[[dict], Sequence[str]] | None = None,
 ) -> None:
     """Add the employee view to the active Blocks context.
 
     The first two callbacks consume proxy.json request and decision objects and
-    return validated result objects. A presentation callback can supply notices
-    for a review while the shared contract for missing information is pending.
-    The proxy supplies only suggested actions it has selected for high-impact details.
+    return validated result objects. Review items with an action are the
+    targeted suggestions selected by the proxy for high-impact details.
     """
     state = gr.State(_ChatState())
     # Carry the displayed revision in each browser event, alongside server-side state.
@@ -140,7 +143,7 @@ def build_chat(
                 visible=proposal is not None or editing,
                 interactive=editing,
             ),
-            _review_details(review, current.missing_information) if review else "",
+            _review_details(review) if review else "",
             gr.update(visible=proposal is not None and not editing and "approve" in allowed),
             gr.update(visible=not editing and "edit" in allowed),
             gr.update(visible=proposal is not None and not editing and "local_simulated" in allowed),
@@ -150,13 +153,7 @@ def build_chat(
 
     def receive(result, messages):
         if result["status"] == "review_required":
-            notices = ()
-            if missing_information is not None:
-                try:
-                    notices = tuple(missing_information(result))
-                except (TimeoutError, ValueError):
-                    notices = ("Missing-information notices are unavailable.",)
-            return render(_ChatState(messages, result, result["proposed_prompt"] is None, notices))
+            return render(_ChatState(messages, result, result["proposed_prompt"] is None))
         if result["status"] == "completed":
             answer = {"role": "assistant", "content": result["answer"]}
             return render(_ChatState([*messages, answer]))
