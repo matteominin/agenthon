@@ -18,7 +18,7 @@ class Turn(BaseModel):
     chat: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
     message_id: str | None = None
-    inline_approval: bool = False
+    inline_review: bool = False
 
 
 CSS = Path(__file__).with_name("admin.css").read_text(encoding="utf-8")
@@ -31,7 +31,7 @@ def build_services(proxy):
     def turn(data: Turn):
         return chat.turn(
             (data.user, data.chat), data.prompt,
-            message_id=data.message_id, inline_approval=data.inline_approval,
+            message_id=data.message_id, inline_review=data.inline_review,
         )
 
     with gr.Blocks(title="TDB · Request history", analytics_enabled=False) as dashboard:

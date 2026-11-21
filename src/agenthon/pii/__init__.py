@@ -86,6 +86,15 @@ def _contract_id_matches(prompt):
         yield from (_Match(*match.span(), "contract_id") for match in pattern.finditer(prompt))
 
 
+def retained_entities(prompt, previous):
+    """Return review metadata for known placeholders still present in the prompt."""
+    return [
+        {"label": label, "type": _TYPES_BY_PREFIX[prefix]}
+        for label, prefix in dict((match[0], match[1]) for match in _LABEL.finditer(prompt)).items()
+        if label in previous
+    ]
+
+
 class PIIDetector:
     def __init__(self, find_names: NameFinder | None = None):
         self._find_names = find_names

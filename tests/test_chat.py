@@ -38,9 +38,11 @@ class ChatTests(unittest.TestCase):
                     self.assertEqual(self.sent, [])
                     self.assertNotIn("Missing information", result["embed"])
                     token = re.search(r'data-reference="([A-Za-z0-9_-]{16})"', result["embed"])[1]
-                    self.assertEqual(result["approval"], {
-                        "token": token, "text": tagged_choice("approve", token),
-                    })
+                    self.assertEqual(result["review"]["token"], token)
+                    self.assertEqual(
+                        result["review"]["commands"]["approve"] + result["review"]["suffix"],
+                        tagged_choice("approve", token),
+                    )
                     action = case["decision"]
                     choice = f"{BUTTONS[action]} [TDB:{token}]"
                     if action == "edit":
@@ -176,14 +178,57 @@ class ChatTests(unittest.TestCase):
 
     def test_inline_approval_requires_the_original_assistant_message(self):
         review = self.chat.turn(OWNER, "Draft a text to +1-202-555-0142.", message_id="assistant-1")
-        command = review["approval"]["text"]
+        command = tagged_choice("approve", review["review"]["token"])
 
-        wrong = self.chat.turn(OWNER, command, message_id="assistant-2", inline_approval=True)
+        wrong = self.chat.turn(OWNER, command, message_id="assistant-2", inline_review=True)
         self.assertIn("out of date", wrong["message"])
         self.assertFalse(self.sent)
-        accepted = self.chat.turn(OWNER, command, message_id="assistant-1", inline_approval=True)
+        accepted = self.chat.turn(OWNER, command, message_id="assistant-1", inline_review=True)
         self.assertEqual(accepted["message"], "Demo response")
         self.assertEqual(self.sent, [("Draft a text to [PHONE_1].", "deepseek")])
+
+    def test_inline_edit_rechecks_retained_placeholders_before_sending(self):
+        def rephrase(data):
+            proposed = data["prompt"].replace("cnfirm", "confirm")
+            return {"proposed_prompt": proposed, "changed": proposed != data["prompt"], "confidence": 1}
+
+        proxy = Proxy(lambda prompt, route: "To: [PHONE_1]",
+                      detector=PIIDetector(find_names=find_names), rephraser=rephrase)
+        chat = Chat(proxy)
+        message_id = "assistant-1"
+        initial = chat.turn(OWNER, "Text +1-202-555-0142 to confirm delivery.", message_id=message_id)
+        command = tagged_choice("edit", initial["review"]["token"], "Text [PHONE_1] to cnfirm delivery.")
+        revised = chat.turn(OWNER, command, message_id=message_id, inline_review=True)
+
+        self.assertIn("Edited prompt checked", revised["embed"])
+        self.assertIn("Text [PHONE_1] to confirm delivery.", revised["embed"])
+        self.assertIn('data-label="[PHONE_1]">+1-202-555-0142', revised["embed"])
+        self.assertIsNone(proxy.history()[0]["sent_prompt"])
+        self.assertNotEqual(revised["review"]["token"], initial["review"]["token"])
+        accepted = chat.turn(
+            OWNER, tagged_choice("approve", revised["review"]["token"]),
+            message_id=message_id, inline_review=True,
+        )
+        self.assertEqual(accepted["message"], "To: +1-202-555-0142")
+        self.assertEqual(proxy.history()[0]["sent_prompt"], "Text [PHONE_1] to confirm delivery.")
+
+    def test_inline_edit_preserves_a_verified_redacted_draft_if_rephrase_fails(self):
+        def rephrase(data):
+            prompt = data["prompt"]
+            return {"proposed_prompt": prompt, "changed": False, "confidence": 0.2 if "cnfirm" in prompt else 1}
+
+        proxy = Proxy(self.proxy._provider, detector=PIIDetector(find_names=find_names), rephraser=rephrase)
+        chat = Chat(proxy)
+        initial = chat.turn(OWNER, "Text +1-202-555-0142 to confirm delivery.", message_id="a")
+        draft = "Text [PHONE_1] to cnfirm delivery and notify maya@example.test."
+        revised = chat.turn(
+            OWNER, tagged_choice("edit", initial["review"]["token"], draft),
+            message_id="a", inline_review=True,
+        )
+        self.assertIn("Automatic rewriting was unavailable", revised["embed"])
+        self.assertIn("Text [PHONE_1] to cnfirm delivery and notify [EMAIL_1].", revised["embed"])
+        self.assertIn("approve", revised["review"]["commands"])
+        self.assertFalse(self.sent)
 
     def test_review_lists_originals_and_renders_safe_markdown(self):
         result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
@@ -266,17 +311,18 @@ class PipeTests(unittest.IsolatedAsyncioTestCase):
             network.assert_not_called()
             self.assertEqual(await pipe.pipe(body, {"id": "u"}, {"chat_id": "c"}, emit), "Review required.")
             self.assertEqual(json.loads(network.call_args.args[0].data)["prompt"], "Draft an email.")
-            self.assertEqual(events, [{"type": "embeds", "data": {"embeds": ["<article>Review</article>"]}}])
+            self.assertEqual(events, [{"type": "embeds", "data": {"embeds": ["<article>Review</article>"], "replace": True}}])
 
     async def test_pipe_registers_one_click_for_an_approvable_review(self):
         events = []
         async def emit(event):
             events.append(event)
 
-        approval = {"token": "abcdefghijklmnop", "text": tagged_choice("approve", "abcdefghijklmnop")}
+        review = {"token": "abcdefghijklmnop", "suffix": "technical-reference",
+                  "commands": {"approve": BUTTONS["approve"], "edit": BUTTONS["edit"]}}
         with patch("agenthon.ui.openwebui_pipe.urlopen") as network:
             network.return_value.__enter__.return_value.read.return_value = json.dumps({
-                "message": "Review required.", "embed": "<article>Review</article>", "approval": approval,
+                "message": "Review required.", "embed": "<article>Review</article>", "review": review,
             }).encode()
             result = await Pipe().pipe(
                 {"messages": [{"role": "user", "content": "Draft an email."}]}, {"id": "u"},
@@ -286,7 +332,7 @@ class PipeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "")
         self.assertEqual([event["type"] for event in events], ["execute", "embeds"])
         self.assertIn('"assistant_message_id": "a"', events[0]["data"]["code"])
-        self.assertIn('"tdb_approval": ' + json.dumps(approval["text"]), events[0]["data"]["code"])
+        self.assertIn(json.dumps(review["commands"]), events[0]["data"]["code"])
 
     async def test_inline_approval_clears_the_card_and_returns_the_model_answer(self):
         events = []
@@ -297,9 +343,9 @@ class PipeTests(unittest.IsolatedAsyncioTestCase):
         metadata = {"chat_id": "c", "assistant_message_id": "a", "message_id": "a"}
         with patch("agenthon.ui.openwebui_pipe.urlopen") as network:
             network.return_value.__enter__.return_value.read.return_value = b'{"message":"Model answer"}'
-            result = await Pipe().pipe({"tdb_approval": text}, {"id": "u"}, metadata, emit)
+            result = await Pipe().pipe({"tdb_review": text}, {"id": "u"}, metadata, emit)
             self.assertEqual(json.loads(network.call_args.args[0].data), {
-                "user": "u", "chat": "c", "prompt": text, "message_id": "a", "inline_approval": True,
+                "user": "u", "chat": "c", "prompt": text, "message_id": "a", "inline_review": True,
             })
 
         self.assertEqual(result, "Model answer")

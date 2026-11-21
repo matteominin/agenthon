@@ -5,7 +5,7 @@ from threading import Lock
 from uuid import uuid4
 
 from agenthon.models import DeepSeekProvider, InvalidModelOutput, ModelError, OutputIssue
-from agenthon.pii import PIIDetector
+from agenthon.pii import PIIDetector, retained_entities
 from agenthon.rephrase import rephrase
 from agenthon.suggestion import suggest
 from agenthon.trace import TraceLog, timestamp
@@ -74,7 +74,7 @@ class Proxy:
         self._trace.record(request_id, "proxy", "check", output={"status": "processing"})
         return self._screen(request_id, prompt, 1, {})
 
-    def decide(self, decision):
+    def decide(self, decision, *, inline_review=False):
         """Bind a choice to the currently displayed review revision."""
         validate_contract("proxy", decision, "decision")
         request_id = decision["request_id"]
@@ -96,7 +96,7 @@ class Proxy:
         self._trace.record(request_id, "proxy", "check", output={"status": "processing"})
         if action == "edit":
             return self._screen(
-                request_id, decision["prompt"], decision["revision"] + 1, known_values
+                request_id, decision["prompt"], decision["revision"] + 1, known_values, inline_review=inline_review
             )
         route = "local_simulated" if action == "local_simulated" else "deepseek"
         return self._send(request_id, result["proposed_prompt"], route)
@@ -168,7 +168,7 @@ class Proxy:
             raise ValueError("Invalid PII result.")
         return payload, all_values
 
-    def _screen(self, request_id, prompt, revision, known_values):
+    def _screen(self, request_id, prompt, revision, known_values, *, inline_review=False):
         try:
             pii, known_values = self._attempt(
                 request_id, "pii", lambda: self._detect(prompt, known_values)
@@ -189,13 +189,16 @@ class Proxy:
             return self._review(
                 request_id, revision, "uncertain_detection", known_values, entities
             )
-        if pii["status"] == "clear":
+        if inline_review:
+            entities = retained_entities(pii["redacted_prompt"], known_values)
+        if not entities:
             return self._send(request_id, prompt, "deepseek")
 
         try:
-            proposed, suggestions = self._prepare_review(request_id, pii, known_values)
+            proposed, suggestions = self._prepare_review(request_id, {**pii, "entities": entities}, known_values)
         except _StageFailure as exc:
-            return self._review(request_id, revision, exc.reason, known_values, entities)
+            proposed = pii["redacted_prompt"] if inline_review else None
+            return self._review(request_id, revision, exc.reason, known_values, entities, proposed)
         return self._review(
             request_id, revision, "pii_found", known_values, entities, proposed, suggestions
         )

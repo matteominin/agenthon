@@ -23,16 +23,15 @@ textarea{width:100%;resize:vertical;min-height:230px;max-height:65vh;font:inheri
 .hint{margin-top:8px}.guidance{margin-top:18px;border-top:1px solid var(--line);padding-top:10px}.guidance:empty{display:none}
 summary{font-weight:650;cursor:pointer;padding:4px 0}details ul{padding-left:22px;font-size:14px}details+details{margin-top:6px}
 footer{border-top:1px solid var(--line);align-items:flex-end;justify-content:flex-end;flex-wrap:wrap;background:var(--wash)}
-.approval-action{display:grid;gap:4px}
-.approval-action:has(button[hidden]){display:none}
-button[data-choice=approve]{display:grid}
-.approval-label,.approval-progress{grid-area:1/1}
-.approval-progress,button[aria-busy=true] .approval-label{visibility:hidden}
-button[aria-busy=true] .approval-progress{visibility:visible}
-#approval-status{contain:inline-size;text-align:center;overflow-wrap:anywhere}
-#approval-status:empty{display:none}
-footer [data-choice=local_simulated]{margin-right:auto}.muted{color:var(--quiet);font-size:12px}
-[hidden]{display:none!important}@media(max-width:470px){footer{align-items:stretch}footer button,footer .approval-action{flex:1 1 auto}footer [data-choice=local_simulated]{flex-basis:100%}}
+.review-action{display:grid;gap:4px}
+button[data-choice]{display:grid}
+.action-label,.action-progress{grid-area:1/1}
+.action-progress,button[aria-busy=true] .action-label{visibility:hidden}
+button[aria-busy=true] .action-progress{visibility:visible}
+.review-error{contain:inline-size;text-align:center;overflow-wrap:anywhere}
+.review-error:empty{display:none}
+footer [data-action=local_simulated]{margin-right:auto}.muted{color:var(--quiet);font-size:12px}
+[hidden]{display:none!important}@media(max-width:470px){footer{align-items:stretch}footer button,footer .review-action{flex:1 1 auto}footer [data-action=local_simulated]{flex-basis:100%}}
 @media(min-width:660px){
  .content:has(.guidance:not(:empty)):has(#draft[hidden]){display:grid;grid-template-columns:minmax(0,1.8fr) minmax(170px,1fr);gap:22px}
  .content:has(#draft[hidden]) .guidance{margin:0;padding:0 0 0 16px;border-top:0;border-left:1px solid var(--line)}
@@ -88,31 +87,33 @@ function editing(on){
 }
 el('edit')?.addEventListener('click',()=>editing(true));
 el('cancel')?.addEventListener('click',()=>editing(false));
-document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{
- if(b.dataset.choice==='edit'&&!draft.value.trim()){draft.focus();draft.setCustomValidity('Enter a prompt to continue.');draft.reportValidity();return}
- // Open WebUI displays the submitted text in its confirmation dialog.
- const tag=String.fromCodePoint(0xe0001,...Array.from(token,c=>0xe0000+c.codePointAt(0)),0xe007f);
- const text=b.dataset.command+(b.dataset.choice==='edit'?'\n\n'+draft.value:'')+tag;
- const submit=()=>parent.postMessage({type:'input:prompt:submit',text},'*');
- if(b.dataset.choice!=='approve'){submit();return}
- b.disabled=true;
- const status=el('approval-status');
+document.querySelectorAll('[data-choice]').forEach(button=>button.onclick=()=>{
+ const action=button.dataset.choice;
+ if(action==='edit'&&!draft.value.trim()){
+  draft.focus();draft.setCustomValidity('Enter a prompt to continue.');draft.reportValidity();return;
+ }
+ const controls=[...document.querySelectorAll('button:not(:disabled)')];
+ const status=button.parentElement.querySelector('.review-error');
  status.textContent='';
- b.setAttribute('aria-busy','true');
+ controls.forEach(control=>control.disabled=true);
+ draft.readOnly=true;
+ button.setAttribute('aria-busy','true');
  function unavailable(){
-  window.removeEventListener('message',onApproval);
-  b.disabled=false;
-  b.removeAttribute('aria-busy');
+  clearTimeout(fallback);
+  window.removeEventListener('message',onReview);
+  controls.forEach(control=>control.disabled=false);
+  draft.readOnly=false;
+  button.removeAttribute('aria-busy');
   status.textContent='Could not send. Try again or reopen the request.';
  }
- function onApproval(event){
+ function onReview(event){
   if(event.source!==parent||event.data?.token!==token)return;
-  if(event.data.type==='tdb:approval-dispatched')clearTimeout(fallback);
-  if(event.data.type==='tdb:approval-failed')unavailable();
+  if(event.data.type==='tdb:review-dispatched')clearTimeout(fallback);
+  if(event.data.type==='tdb:review-failed')unavailable();
  }
  const fallback=setTimeout(unavailable,800);
- window.addEventListener('message',onApproval);
- parent.postMessage({type:'tdb:approve',token},'*');
+ window.addEventListener('message',onReview);
+ parent.postMessage({type:'tdb:review',token,action,draft:action==='edit'?draft.value:undefined},'*');
 });
 draft.oninput=()=>draft.setCustomValidity('');
 new ResizeObserver(()=>parent.postMessage({type:'iframe:height',height:document.body.scrollHeight},'*')).observe(document.body);

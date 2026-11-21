@@ -136,7 +136,7 @@ MARKDOWN = MarkdownIt("commonmark", {"html": False, "breaks": True}).disable(
 REVIEW_TEMPLATE = Template(Path(__file__).with_name("review.html").read_text(encoding="utf-8"))
 
 
-def review_card(review, token, originals=None):
+def review_card(review, token, originals=None, *, edited_draft=None):
     proposal = review["proposed_prompt"]
     originals = originals or {}
     preview = MARKDOWN.render(proposal or "")
@@ -173,21 +173,26 @@ def review_card(review, token, originals=None):
         if editing and has_preview:
             actions.append('<button id="cancel" data-mode="edit" hidden>Cancel changes</button>')
         label = BUTTONS[action]
-        if action == "approve":
-            label = f'<span class="approval-label">{label}</span><span class="approval-progress">Sending…</span>'
-        button = (
-            f'<button data-choice="{action}" data-command="{BUTTONS[action]}" data-mode="{mode}" '
-            f'class="{"" if action == "local_simulated" else "primary"}"{hidden}>{label}</button>'
+        progress = "Checking…" if editing else "Sending…"
+        actions.append(
+            f'<div class="review-action" data-action="{action}" data-mode="{mode}"{hidden}>'
+            '<span class="review-error muted" role="status"></span>'
+            f'<button data-choice="{action}" class="{"" if action == "local_simulated" else "primary"}">'
+            f'<span class="action-label">{label}</span><span class="action-progress">{progress}</span>'
+            '</button></div>'
         )
-        if action == "approve":
-            button = ('<div class="approval-action"><span id="approval-status" class="muted" role="status"></span>'
-                      + button + '</div>')
-        actions.append(button)
+
+    reason = REASONS[review["reason"]]
+    if edited_draft is not None and has_preview:
+        if review["reason"] == "pii_found":
+            reason = "Edited prompt checked. Review the updated version before sending."
+        else:
+            reason = "Automatic rewriting was unavailable. Review the checked draft before sending."
     return REVIEW_TEMPLATE.substitute(
-        token=token, reason=REASONS[review["reason"]],
+        token=token, reason=reason,
         badges='<div class="badges">' + "".join(badges) + '</div>' if badges else "",
         preview_hidden="" if has_preview else "hidden", edit_hidden="hidden" if has_preview else "",
-        hint_hidden="" if has_preview and originals else "hidden", draft=escape(proposal or ""),
+        hint_hidden="" if has_preview and originals else "hidden", draft=escape(proposal if has_preview else edited_draft or ""),
         edit_button='<button id="edit" data-mode="preview">Edit</button>' if editable and has_preview else "",
         preview=preview, guidance=guidance, actions="".join(actions),
     )
@@ -199,12 +204,12 @@ class Chat:
         self.pending = {}
         self.lock = Lock()
 
-    def turn(self, owner, text, *, message_id=None, inline_approval=False):
+    def turn(self, owner, text, *, message_id=None, inline_review=False):
         command = _parse_command(text)
         action = None
         originals = {}
         sent_prompt = ""
-        if inline_approval and (not command or command[0] != BUTTONS["approve"] or not message_id):
+        if inline_review and (not command or not message_id):
             return {"message": REASONS["stale_review"]}
         if command:
             label, draft, token = command
@@ -212,7 +217,7 @@ class Chat:
             with self.lock:
                 pending = self.pending.get(token)
                 if (not pending or pending[0] != owner or action not in pending[2]
-                        or (inline_approval and message_id != pending[4])):
+                        or (inline_review and message_id != pending[4])):
                     return {"message": REASONS["stale_review"]}
                 if action == "edit" and not (draft or "").strip():
                     return {"message": "Enter an edited prompt."}
@@ -222,7 +227,7 @@ class Chat:
                 decision["prompt"] = draft
             sent_prompt = draft if action == "edit" else pending[3]
             originals = self.proxy.review_originals(**pending[1], include_previous=True)
-            result = self.proxy.decide(decision)
+            result = self.proxy.decide(decision, inline_review=True) if inline_review else self.proxy.decide(decision)
         else:
             result = self.proxy.submit({"prompt": text})
         if result["status"] == "completed":
@@ -237,11 +242,14 @@ class Chat:
         message = "Review required before sending."
         if action == "edit" and result["reason"] == "pii_found":
             message = "Personal information was detected in the edited prompt. Review the updated version before sending."
-        response = {"message": message, "embed": review_card(result, token, originals)}
-        if "approve" in result["allowed_actions"]:
-            tags = "".join(chr(TAG_OFFSET + ord(char)) for char in token)
-            response["approval"] = {
-                "token": token,
-                "text": f"{BUTTONS['approve']}\U000e0001{tags}\U000e007f",
-            }
+        response = {
+            "message": message,
+            "embed": review_card(result, token, originals, edited_draft=draft if action == "edit" else None),
+        }
+        tags = "".join(chr(TAG_OFFSET + ord(char)) for char in token)
+        response["review"] = {
+            "token": token,
+            "suffix": f"\U000e0001{tags}\U000e007f",
+            "commands": {action: BUTTONS[action] for action in result["allowed_actions"]},
+        }
         return response
