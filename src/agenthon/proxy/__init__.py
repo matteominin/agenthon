@@ -32,11 +32,14 @@ def _contains_removed_value(prompt, values):
 class Proxy:
     """Request, decision, history and trace entry points for the demo UI."""
 
-    def __init__(self, provider=None, *, detector=None, rephraser=rephrase,
+    def __init__(self, provider=None, *, detector=None, rephraser=None,
                  suggester=suggest, trace_path=None):
         self._provider = DeepSeekProvider() if provider is None else provider
         self._detector = PIIDetector() if detector is None else detector
-        self._rephrase = rephraser
+        # Callable-only providers used by existing fixtures can keep their local rephraser.
+        self._rephrase = (
+            getattr(self._provider, "rephrase", rephrase) if rephraser is None else rephraser
+        )
         self._suggest = suggester
         self._trace = TraceLog(validate_contract, trace_path)
         self._history = {}
@@ -189,7 +192,8 @@ class Proxy:
             missing = result.get("missing_information", [])
             if (not proposed.strip()
                     or result["confidence"] < 0.5
-                    or result["changed"] != (proposed != redacted)
+                    or not result["changed"]
+                    or proposed.strip() == redacted.strip()
                     or Counter(_PLACEHOLDER.findall(proposed)) != Counter(_PLACEHOLDER.findall(redacted))
                     or _contains_removed_value(proposed, known_values.values())
                     or any(
