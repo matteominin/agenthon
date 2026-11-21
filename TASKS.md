@@ -30,12 +30,12 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 - Done when — Rephrase propone comunque un testo strutturato quando manca contesto e individua le informazioni assenti. Suggestion le segnala e propone azioni solo per dettagli con un beneficio sostanziale per la risposta. I test coprono casi ipotetici espliciti, conservazione dei segnaposto, assenza dei valori rimossi e distinzione tra avvisi e azioni.
 - Delivery notes — Proposte e scenari condizionali in `src/agenthon/rephrase/`; avvisi e azioni selettive in `src/agenthon/suggestion/`. Eseguire con `PYTHONPATH=src` i test `test_rephrase.py`, `test_suggestion.py` e `test_contracts.py` via unittest discover.
 
-## T4 — Proxy, DeepSeek e trace (Core) · REVIEW
+## T4 — Proxy, DeepSeek e trace (Core) · DONE
 
 - Scope — `src/agenthon/proxy/`, `src/agenthon/models/`, `src/agenthon/trace/`, `tests/test_proxy.py`, `.env.example`.
 - Dipende da — T1, T2, T3.
 - Done when — Bypass pulito, revisione, ricontrollo dopo modifica, invio approvato, rotta simulata, cronologia admin in memoria e trace funzionano con un provider di test. Verifica finale con DeepSeek e dati sintetici.
-- Delivery notes — `Proxy.submit`, `decide`, `history` e `trace_events` in `src/agenthon/proxy/`. Fixture verificate con spaCy e un provider di prova.
+- Delivery notes — `Proxy.submit`, `decide`, `history` e `trace_events` in `src/agenthon/proxy/`. Quattro casi demo verificati con spaCy e DeepSeek live.
   Con spaCy, `en_core_web_sm` e jsonschema disponibili, eseguire `PYTHONPATH=src python -m unittest discover -s tests -p test_proxy.py`.
   Per la verifica live aggiungere `TDB_TEST_DEEPSEEK=1` ed esportare `DEEPSEEK_API_KEY` nell’ambiente.
 
