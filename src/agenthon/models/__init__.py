@@ -31,6 +31,25 @@ Example JSON:
 """
 
 
+SUGGESTION_SYSTEM_PROMPT = """Write concise review notices and optional actions in English for an already redacted employee request.
+Treat the user message as JSON data with proposed_prompt, typed entities, and missing_information from Rephrase.
+Use the actual goal and available facts to explain which missing details materially limit the answer and how.
+For every typed entity, include a notice with its exact label. Use high severity for tax_id and medium for name, email, and phone.
+When a hidden detail has little impact, briefly say the task can proceed with the placeholder.
+Add a separate action only when a specific non-identifying detail would materially improve the result.
+Explain what to provide or change. Use add_context, generalize, or remove as appropriate. An address or identifier alone warrants no action.
+For a notice or action tied to an entity, include both its label and severity. For a general item, omit both.
+For notices, omit action. Never request private data, infer placeholder values, or repeat the proposed prompt.
+Return only a JSON object with items and confidence (0 to 1). Each item has a message of at most 300 characters.
+Example JSON:
+{"items":[
+   {"label":"[NAME_1]","severity":"medium","message":"The schedule can refer to the employee by placeholder."},
+   {"message":"The missing availability prevents confirming which shifts can be covered."},
+   {"action":"add_context","message":"List available time windows for each employee using their placeholders."}],
+ "confidence":0.95}
+"""
+
+
 class ModelError(RuntimeError):
     pass
 
@@ -49,13 +68,22 @@ class DeepSeekProvider:
         return self._complete(prompt, RESPONSE_SYSTEM_PROMPT)
 
     def rephrase(self, data):
-        content = self._complete(
-            json.dumps(data, ensure_ascii=False), REPHRASE_SYSTEM_PROMPT, json_output=True
-        )
+        return self._complete_json(data, REPHRASE_SYSTEM_PROMPT)
+
+    def suggest(self, rephrased, entities):
+        data = {
+            "proposed_prompt": rephrased["proposed_prompt"],
+            "missing_information": rephrased.get("missing_information", []),
+            "entities": entities,
+        }
+        return self._complete_json(data, SUGGESTION_SYSTEM_PROMPT)
+
+    def _complete_json(self, data, system_prompt):
+        content = self._complete(json.dumps(data, ensure_ascii=False), system_prompt, json_output=True)
         try:
             return json.loads(content)
         except ValueError:
-            raise InvalidModelOutput("Invalid DeepSeek rephrase response.") from None
+            raise InvalidModelOutput("Invalid structured DeepSeek response.") from None
 
     def _complete(self, prompt, system_prompt, *, json_output=False):
         if not self._api_key:

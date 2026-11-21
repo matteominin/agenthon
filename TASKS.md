@@ -34,8 +34,8 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 - Scope — `src/agenthon/proxy/`, `src/agenthon/models/`, `src/agenthon/trace/`, `tests/test_proxy.py`, `.env.example`.
 - Dipende da — T1, T2, T3.
-- Done when — Bypass pulito, revisione, ricontrollo dopo modifica, invio approvato, rotta simulata, cronologia admin in memoria e trace funzionano con un provider di test. DeepSeek riscrive il prompt oscurato prima della revisione e usa un system prompt conciso per le risposte finali.
-- Delivery notes — Il proxy invoca DeepSeek per riscrivere il testo oscurato prima della revisione e usa un system prompt conciso per le risposte finali.
+- Done when — Bypass pulito, revisione, ricontrollo dopo modifica, invio approvato, rotta simulata, cronologia admin in memoria e trace funzionano con un provider di test. DeepSeek riscrive il prompt oscurato, genera avvisi e azioni per la revisione e usa un system prompt conciso per le risposte finali.
+- Delivery notes — Il proxy usa DeepSeek per Rephrase e Suggestion sul testo oscurato e un system prompt conciso per le risposte finali.
   Con spaCy, `en_core_web_sm` e jsonschema disponibili, eseguire `PYTHONPATH=src python -m unittest discover -s tests -p test_proxy.py`.
   Quattro casi demo verificati con DeepSeek live. Per ripetere la prova, impostare `TDB_TEST_DEEPSEEK=1` e `DEEPSEEK_API_KEY`.
 

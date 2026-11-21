@@ -6,7 +6,7 @@ Per P0 il rilevatore locale usa il modello inglese spaCy `en_core_web_sm` per i 
 
 ## D2 — Rephrase e Suggestion nel proxy
 
-Il proxy invoca DeepSeek per Rephrase subito dopo la rilevazione affidabile e l’oscuramento in locale, inviando solo il prompt oscurato e i segnaposto tipizzati. Suggestion applica regole Python all’output JSON validato. Rephrase ristruttura il prompt oscurato per compensare le informazioni sottratte, usando contesto generico, casi ipotetici espliciti o richieste condizionate ai dati mancanti. La proposta distingue i fatti disponibili dalle ipotesi. Suggestion segnala le informazioni mancanti e propone azioni solo quando aggiungere contesto non identificativo avrebbe un impatto rilevante sulla risposta. La scelta resta al dipendente.
+Il proxy invoca DeepSeek per Rephrase subito dopo la rilevazione affidabile e l’oscuramento in locale, inviando solo il prompt oscurato e i segnaposto tipizzati. Il proxy invoca DeepSeek anche per Suggestion, usando la proposta verificata, i segnaposto tipizzati e le informazioni mancanti già validate. Valida poi gli avvisi e le azioni prima di mostrarli. Rephrase ristruttura il prompt oscurato per compensare le informazioni sottratte, usando contesto generico, casi ipotetici espliciti o richieste condizionate ai dati mancanti. La proposta distingue i fatti disponibili dalle ipotesi. Suggestion segnala le informazioni mancanti e propone azioni solo quando aggiungere contesto non identificativo avrebbe un impatto rilevante sulla risposta. La scelta resta al dipendente.
 
 Nel payload di revisione gli avvisi hanno solo `message` e gli eventuali `label` e `severity`. Le azioni sono elementi distinti con il campo `action`.
 
