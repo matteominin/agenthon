@@ -227,4 +227,11 @@ class Chat:
         message = "Review required before sending."
         if action == "edit" and result["reason"] == "pii_found":
             message = "Personal information was detected in the edited prompt. Review the updated version before sending."
-        return {"message": message, "embed": review_card(result, token, originals)}
+        response = {"message": message, "embed": review_card(result, token, originals)}
+        if "approve" in result["allowed_actions"]:
+            tags = "".join(chr(TAG_OFFSET + ord(char)) for char in token)
+            response["approval"] = {
+                "token": token,
+                "text": f"{BUTTONS['approve']}\U000e0001{tags}\U000e007f",
+            }
+        return response

@@ -38,6 +38,9 @@ class ChatTests(unittest.TestCase):
                     self.assertEqual(self.sent, [])
                     self.assertNotIn("Missing information", result["embed"])
                     token = re.search(r'data-reference="([A-Za-z0-9_-]{16})"', result["embed"])[1]
+                    self.assertEqual(result["approval"], {
+                        "token": token, "text": tagged_choice("approve", token),
+                    })
                     action = case["decision"]
                     choice = f"{BUTTONS[action]} [TDB:{token}]"
                     if action == "edit":
@@ -253,3 +256,19 @@ class PipeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await pipe.pipe(body, {"id": "u"}, {"chat_id": "c"}, emit), "Review required.")
             self.assertEqual(json.loads(network.call_args.args[0].data)["prompt"], "Draft an email.")
             self.assertEqual(events, [{"type": "embeds", "data": {"embeds": ["<article>Review</article>"]}}])
+
+    async def test_pipe_registers_one_click_for_an_approvable_review(self):
+        events = []
+        async def emit(event):
+            events.append(event)
+
+        approval = {"token": "abcdefghijklmnop", "text": tagged_choice("approve", "abcdefghijklmnop")}
+        with patch("agenthon.ui.openwebui_pipe.urlopen") as network:
+            network.return_value.__enter__.return_value.read.return_value = json.dumps({
+                "message": "Review required.", "embed": "<article>Review</article>", "approval": approval,
+            }).encode()
+            await Pipe().pipe({"messages": [{"role": "user", "content": "Draft an email."}]},
+                              {"id": "u"}, {"chat_id": "c"}, emit)
+
+        self.assertEqual([event["type"] for event in events], ["execute", "embeds"])
+        self.assertIn(json.dumps(approval), events[0]["data"]["code"])

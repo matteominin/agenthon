@@ -5,8 +5,36 @@ description: Review personal data in Open WebUI before sending a prompt to DeepS
 import asyncio
 import json
 import os
+from string import Template
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+
+# Only the trusted Pipe can register an approval. The sandboxed frame can
+# request this one prebuilt command, without supplying any prompt text.
+APPROVAL_BRIDGE = Template("""
+const approval = $approval;
+const key = Symbol.for('tdb.review.approvals');
+if (!window[key]) {
+    const approvals = new Map();
+    window[key] = approvals;
+    window.addEventListener('message', event => {
+        if (event.data?.type !== 'tdb:approve') return;
+        const token = event.data.token;
+        const text = approvals.get(token);
+        if (!text) return;
+        const frame = Array.from(document.querySelectorAll('iframe[srcdoc]')).find(candidate =>
+            candidate.contentWindow === event.source &&
+            candidate.getAttribute('srcdoc').includes('data-reference="' + token + '"')
+        );
+        if (!frame || (frame.closest('[data-chat]')?.getAttribute('data-chat') ?? 'main') !== 'main') return;
+        approvals.delete(token);
+        event.source.postMessage({type: 'tdb:approval-dispatched', token}, '*');
+        window.postMessage({type: 'input:prompt:submit', text}, window.location.origin);
+    });
+}
+window[key].set(approval.token, approval.text);
+""")
 
 
 class Pipe:
@@ -36,5 +64,8 @@ class Pipe:
         except (URLError, TimeoutError, ValueError):
             return "The privacy proxy is unavailable. Please try again."
         if result.get("embed") and __event_emitter__:
+            if result.get("approval"):
+                code = APPROVAL_BRIDGE.substitute(approval=json.dumps(result["approval"]))
+                await __event_emitter__({"type": "execute", "data": {"code": code}})
             await __event_emitter__({"type": "embeds", "data": {"embeds": [result["embed"]]}})
         return result["message"]
