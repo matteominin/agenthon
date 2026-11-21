@@ -192,17 +192,20 @@ class Chat:
         self.pending = {}
         self.lock = Lock()
 
-    def turn(self, owner, text):
+    def turn(self, owner, text, *, message_id=None, inline_approval=False):
         command = _parse_command(text)
         action = None
         originals = {}
         sent_prompt = ""
+        if inline_approval and (not command or command[0] != BUTTONS["approve"] or not message_id):
+            return {"message": REASONS["stale_review"]}
         if command:
             label, draft, token = command
             action = next(key for key, value in BUTTONS.items() if value == label)
             with self.lock:
                 pending = self.pending.get(token)
-                if not pending or pending[0] != owner or action not in pending[2]:
+                if (not pending or pending[0] != owner or action not in pending[2]
+                        or (inline_approval and message_id != pending[4])):
                     return {"message": REASONS["stale_review"]}
                 if action == "edit" and not (draft or "").strip():
                     return {"message": "Enter an edited prompt."}
@@ -222,7 +225,7 @@ class Chat:
         token = secrets.token_urlsafe(12)
         ref = {"request_id": result["request_id"], "revision": result["revision"]}
         with self.lock:
-            self.pending[token] = (owner, ref, result["allowed_actions"], result["proposed_prompt"])
+            self.pending[token] = (owner, ref, result["allowed_actions"], result["proposed_prompt"], message_id)
         originals = self.proxy.review_originals(**ref) if result["entities"] else {}
         message = "Review required before sending."
         if action == "edit" and result["reason"] == "pii_found":

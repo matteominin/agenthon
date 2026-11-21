@@ -23,6 +23,7 @@ textarea{width:100%;resize:vertical;min-height:230px;max-height:65vh;font:inheri
 .hint{margin-top:8px}.guidance{margin-top:18px;border-top:1px solid var(--line);padding-top:10px}.guidance:empty{display:none}
 summary{font-weight:650;cursor:pointer;padding:4px 0}details ul{padding-left:22px;font-size:14px}details+details{margin-top:6px}
 footer{border-top:1px solid var(--line);justify-content:flex-end;flex-wrap:wrap;background:var(--wash)}
+#approval-status:empty{display:none}
 footer [data-choice=local_simulated]{margin-right:auto}.muted{color:var(--quiet);font-size:12px}
 [hidden]{display:none!important}@media(max-width:470px){footer{align-items:stretch}footer button{flex:1 1 auto}footer [data-choice=local_simulated]{flex-basis:100%}}
 @media(min-width:660px){
@@ -41,7 +42,7 @@ $draft</textarea>
 <div id="edit-help" class="hint" $edit_hidden>Personal information is checked again before sending.</div>
 </div><div class="guidance">$guidance</div>
 </section>
-<footer>$actions</footer></article>
+<footer><span id="approval-status" class="muted" role="status"></span>$actions</footer></article>
 <script>
 const el=id=>document.getElementById(id);
 const draft=el('draft'), preview=el('preview'), token=document.querySelector('article').dataset.reference;
@@ -88,17 +89,20 @@ document.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{
  const submit=()=>parent.postMessage({type:'input:prompt:submit',text},'*');
  if(b.dataset.choice!=='approve'){submit();return}
  b.disabled=true;
- function onDispatched(event){
-  if(event.source!==parent||event.data?.type!=='tdb:approval-dispatched'||event.data.token!==token)return;
-  clearTimeout(fallback);
-  window.removeEventListener('message',onDispatched);
- }
- const fallback=setTimeout(()=>{
-  window.removeEventListener('message',onDispatched);
+ const status=el('approval-status');
+ status.textContent='Sending…';
+ function unavailable(){
+  window.removeEventListener('message',onApproval);
   b.disabled=false;
-  submit();
- },400);
- window.addEventListener('message',onDispatched);
+  status.textContent='Could not send. Try again or reopen the request.';
+ }
+ function onApproval(event){
+  if(event.source!==parent||event.data?.token!==token)return;
+  if(event.data.type==='tdb:approval-dispatched')clearTimeout(fallback);
+  if(event.data.type==='tdb:approval-failed')unavailable();
+ }
+ const fallback=setTimeout(unavailable,800);
+ window.addEventListener('message',onApproval);
  parent.postMessage({type:'tdb:approve',token},'*');
 });
 draft.oninput=()=>draft.setCustomValidity('');

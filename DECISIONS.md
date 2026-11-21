@@ -22,7 +22,7 @@ Il proxy consuma atomicamente la coppia `request_id` e `revision` prima del rico
 
 ## D5 — UI riusabile
 
-Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per l'approvazione con un clic, la Pipe registra nel browser un comando vincolato alla scheda e alla revisione, mantenendo l'iframe in sandbox.
+Open WebUI ospita la chat dipendente. Una Pipe collega il modello TDB al proxy e mostra la scheda di revisione inline. La dashboard admin usa Gradio Blocks e legge cronologia e trace della stessa istanza del proxy. Per l'approvazione con un clic, la Pipe registra nel browser un comando associato al messaggio assistente e alla revisione. Open WebUI aggiorna quel messaggio mantenendo l'iframe in sandbox fino alla risposta.
 
 ## D6 — RAG dopo il percorso P0
 

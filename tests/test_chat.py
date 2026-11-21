@@ -174,6 +174,17 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(request["response"], answer)
         self.assertNotIn(contract_id, json.dumps(proxy.trace_events(request["request_id"])))
 
+    def test_inline_approval_requires_the_original_assistant_message(self):
+        review = self.chat.turn(OWNER, "Draft a text to +1-202-555-0142.", message_id="assistant-1")
+        command = review["approval"]["text"]
+
+        wrong = self.chat.turn(OWNER, command, message_id="assistant-2", inline_approval=True)
+        self.assertIn("out of date", wrong["message"])
+        self.assertFalse(self.sent)
+        accepted = self.chat.turn(OWNER, command, message_id="assistant-1", inline_approval=True)
+        self.assertEqual(accepted["message"], "Demo response")
+        self.assertEqual(self.sent, [("Draft a text to [PHONE_1].", "deepseek")])
+
     def test_review_lists_originals_and_renders_safe_markdown(self):
         result = self.chat.turn(OWNER, "Draft a **reminder** for Jordan Miller at jordan.miller@example.test.")
         card = result["embed"]
@@ -267,8 +278,29 @@ class PipeTests(unittest.IsolatedAsyncioTestCase):
             network.return_value.__enter__.return_value.read.return_value = json.dumps({
                 "message": "Review required.", "embed": "<article>Review</article>", "approval": approval,
             }).encode()
-            await Pipe().pipe({"messages": [{"role": "user", "content": "Draft an email."}]},
-                              {"id": "u"}, {"chat_id": "c"}, emit)
+            result = await Pipe().pipe(
+                {"messages": [{"role": "user", "content": "Draft an email."}]}, {"id": "u"},
+                {"chat_id": "c", "model_id": "tdb", "session_id": "s", "message_id": "a"}, emit,
+            )
 
+        self.assertEqual(result, "")
         self.assertEqual([event["type"] for event in events], ["execute", "embeds"])
-        self.assertIn(json.dumps(approval), events[0]["data"]["code"])
+        self.assertIn('"assistant_message_id": "a"', events[0]["data"]["code"])
+        self.assertIn('"tdb_approval": ' + json.dumps(approval["text"]), events[0]["data"]["code"])
+
+    async def test_inline_approval_clears_the_card_and_returns_the_model_answer(self):
+        events = []
+        async def emit(event):
+            events.append(event)
+
+        text = tagged_choice("approve", "abcdefghijklmnop")
+        metadata = {"chat_id": "c", "assistant_message_id": "a", "message_id": "a"}
+        with patch("agenthon.ui.openwebui_pipe.urlopen") as network:
+            network.return_value.__enter__.return_value.read.return_value = b'{"message":"Model answer"}'
+            result = await Pipe().pipe({"tdb_approval": text}, {"id": "u"}, metadata, emit)
+            self.assertEqual(json.loads(network.call_args.args[0].data), {
+                "user": "u", "chat": "c", "prompt": text, "message_id": "a", "inline_approval": True,
+            })
+
+        self.assertEqual(result, "Model answer")
+        self.assertEqual(events, [{"type": "embeds", "data": {"embeds": [], "replace": True}}])

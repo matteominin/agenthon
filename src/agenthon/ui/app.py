@@ -17,6 +17,8 @@ class Turn(BaseModel):
     user: str = Field(min_length=1)
     chat: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
+    message_id: str | None = None
+    inline_approval: bool = False
 
 
 CSS = Path(__file__).with_name("admin.css").read_text(encoding="utf-8")
@@ -27,7 +29,10 @@ def build_services(proxy):
     transport = FastAPI(docs_url=None, redoc_url=None)
     @transport.post("/turn")
     def turn(data: Turn):
-        return chat.turn((data.user, data.chat), data.prompt)
+        return chat.turn(
+            (data.user, data.chat), data.prompt,
+            message_id=data.message_id, inline_approval=data.inline_approval,
+        )
 
     with gr.Blocks(title="TDB · Request history", analytics_enabled=False) as dashboard:
         gr.HTML('<header><b>TDB</b><span>Privacy administration</span></header>', elem_id="masthead", apply_default_css=False, js_on_load=None)
