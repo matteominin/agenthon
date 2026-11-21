@@ -44,7 +44,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
     def list_trace(self, request_id):
         return self.events.get(request_id, [])
 
-    async def trigger(self, event_name, row=None):
+    async def trigger(self, event_name, row=None, filters=("All", "All", "All")):
         dependency = next(
             event for event in self.app.config["dependencies"]
             if any(name == event_name for _, name in event["targets"])
@@ -53,7 +53,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         if row is not None:
             event_data = gr.EventData(None, {"index": [0, 0], "value": row[0], "row_value": row})
         result = await self.app.process_api(
-            dependency["id"], [None] * len(dependency["inputs"]), state=self.session, event_data=event_data,
+            dependency["id"], [None] * (len(dependency["inputs"]) - 3) + list(filters), state=self.session, event_data=event_data,
         )
         return result["data"]
 
@@ -109,7 +109,7 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(completed[6:9], [
             CASES[case]["prompt"], self.entries[case]["sent_prompt"], "Demo response",
         ])
-        self.assertEqual(completed[9].root, [trace])
+        self.assertEqual(completed[9]["data"][0][1:3], ["model", "complete"])
         unchanged = await self.trigger("tick")
         self.assertEqual(unchanged[2], {"__type__": "update"})
 
@@ -135,6 +135,12 @@ class AdminTests(unittest.IsolatedAsyncioTestCase):
         completed = await self.trigger("tick")
         self.assertEqual(completed[2]["data"][0][2:], ["Completed", "Local (simulated with DeepSeek)", "Detected"])
         self.assertEqual(completed[6:9], [original, review["proposed_prompt"], "Demo response"])
-        events = completed[9].root
-        self.assertEqual({event["request_id"] for event in events}, {review["request_id"]})
-        self.assertEqual(events[-1]["action"], "complete")
+        events = completed[9]["data"]
+        self.assertEqual([row[2] for row in events], [e["action"] for e in proxy.trace_events(review["request_id"])])
+        self.assertEqual(events[-1][2], "complete")
+        filtered = await self.trigger("input", filters=("Detected", "Medium", "Completed"))
+        self.assertEqual([row[1] for row in filtered[2]["data"]], [review["request_id"]])
+        empty = await self.trigger("input", filters=("Detected", "High", "Completed"))
+        self.assertEqual(empty[2]["data"], [])
+        self.assertEqual(empty[3], "No requests match these filters.")
+        self.assertFalse(empty[4]["visible"])
