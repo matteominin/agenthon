@@ -59,10 +59,10 @@ I due sviluppatori possono iniziare in parallelo il filone Core e il filone UI u
 
 ## T7 — Entrypoint e prova demo (UI + Core) · TODO
 
-- Scope — `src/agenthon/__init__.py`, `src/agenthon/ui/app.py`, `README.md`, `pyproject.toml`, `uv.lock`.
+- Scope — `src/agenthon/__init__.py`, `src/agenthon/ui/app.py`, `README.md`, `docs/architecture.svg`, `pyproject.toml`, `uv.lock`.
 - Dipende da — T4, T5, T6. Concordare le dipendenze prima di aggiungerle.
 - Done when — `uv run agenthon` apre la demo. I casi sintetici e gli errori simulati si verificano seguendo il README. Prompt, anteprime, suggerimenti, risposte ed entrambe le viste sono in inglese.
-- Delivery notes —
+- Delivery notes — Il README documenta l’avvio, il flusso eseguibile e l’architettura obiettivo in `docs/architecture.svg`.
 
 ## T8 — Revisione fedele al prompt · DONE
 

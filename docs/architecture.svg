@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"
+     width="1600" height="900" role="img" aria-labelledby="diagram-title diagram-desc">
+  <title id="diagram-title">Prompt buddy request flow and target architecture</title>
+  <desc id="diagram-desc">
+    A request enters RAG, which receives two query and vector database connections.
+    RAG adds retrieved context and sends the request to PII. The yes branch leads to
+    Rephrase, which can send a reformulation to Suggestions and to the approval UI,
+    or send an unchanged draft directly to that UI. Suggestions also enters the UI.
+    Both modify and approve lead to Final request, as does the no branch from PII.
+    Final request connects to local Qwen, OpenAI, and the Admin Dashboard.
+  </desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#30363a" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .node { stroke: #30363a; stroke-width: 2; }
+      .processing { fill: #eef6f2; }
+      .approval { fill: #fff5df; }
+      .request { fill: #edf3fb; }
+      .destination { fill: #f6f7f8; }
+      .link { fill: none; stroke: #30363a; stroke-width: 2; stroke-linecap: round;
+              stroke-linejoin: round; marker-end: url(#arrow); }
+      .node-text { fill: #161b1e; font: 600 25px system-ui, sans-serif; text-anchor: middle; }
+      .label { fill: #20252a; font: 18px ui-monospace, monospace;
+               paint-order: stroke fill; stroke: #fff; stroke-width: 7; stroke-linejoin: round; }
+      .annotation { fill: #252a2e; font: 16px ui-monospace, monospace; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#fff"/>
+
+  <text x="850" y="145" class="annotation">codex --sandbox danger-full-access --ask-for-approval never</text>
+
+  <g id="connections">
+    <path id="input-rag" class="link" d="M 52 337 H 160"/>
+    <path id="query-rag-left" class="link" d="M 201 213 L 229 300"/>
+    <path id="query-rag-right" class="link" d="M 341 212 L 267 300"/>
+    <path id="rag-pii" class="link" d="M 325 337 H 490"/>
+    <path id="pii-rephrase" class="link" d="M 645 337 H 740"/>
+    <path id="pii-final" class="link" d="M 568 374 V 673 Q 568 695 590 695 H 914"/>
+    <path id="rephrase-suggestions" class="link" d="M 930 337 H 1194"/>
+    <path id="no-rephrase-approval" class="link" d="M 815 374 L 956 487"/>
+    <path id="rephrased-approval" class="link" d="M 1065 337 V 487"/>
+    <circle cx="1065" cy="337" r="4" fill="#30363a"/>
+    <path id="suggestions-approval" class="link" d="M 1316 374 V 506 Q 1316 526 1296 526 H 1155"/>
+    <path id="modify-final" class="link" d="M 976 565 V 655"/>
+    <path id="approve-final" class="link" d="M 1103 565 V 655"/>
+    <path id="final-qwen" class="link" d="M 1161 695 H 1320"/>
+    <path id="final-openai" class="link" d="M 974 735 L 807 809"/>
+    <path id="final-admin" class="link" d="M 1100 735 L 1313 809"/>
+  </g>
+
+  <g id="modules">
+    <ellipse class="node processing" cx="269" cy="143" rx="170" ry="77"/>
+    <text class="node-text" x="269" y="118" style="font-size: 21px">
+      <tspan x="269">query generator(agent)</tspan>
+      <tspan x="269" dy="30">+</tspan>
+      <tspan x="269" dy="30">vector db (query)</tspan>
+    </text>
+
+    <rect class="node processing" x="160" y="300" width="165" height="74" rx="14"/>
+    <text class="node-text" x="242.5" y="346">RAG</text>
+
+    <rect class="node processing" x="490" y="300" width="155" height="74" rx="14"/>
+    <text class="node-text" x="567.5" y="346">PII</text>
+
+    <rect class="node processing" x="740" y="300" width="190" height="74" rx="14"/>
+    <text class="node-text" x="835" y="346">Rephrase</text>
+
+    <rect class="node processing" x="1194" y="300" width="245" height="74" rx="14"/>
+    <text class="node-text" x="1316.5" y="346">Suggestions</text>
+
+    <rect class="node approval" x="920" y="487" width="235" height="78" rx="14"/>
+    <text class="node-text" x="1037.5" y="519">
+      <tspan x="1037.5">UI</tspan>
+      <tspan x="1037.5" dy="26" style="font-size: 19px">(approval)</tspan>
+    </text>
+
+    <rect class="node request" x="914" y="655" width="247" height="80" rx="14"/>
+    <text class="node-text" x="1037.5" y="704">Final request</text>
+
+    <rect class="node destination" x="1320" y="655" width="170" height="80" rx="14"/>
+    <text class="node-text" x="1405" y="704">Qwen</text>
+
+    <rect class="node destination" x="707" y="809" width="200" height="64" rx="14"/>
+    <text class="node-text" x="807" y="850">OpenAI</text>
+
+    <rect class="node destination" x="1175" y="809" width="276" height="64" rx="14"/>
+    <text class="node-text" x="1313" y="850">Admin Dashboard</text>
+  </g>
+
+  <g id="connection-labels" class="label">
+    <text x="101" y="319" text-anchor="middle">req</text>
+    <text x="407.5" y="319" text-anchor="middle" style="font-size: 14px">prompt + rag info</text>
+    <text x="692.5" y="319" text-anchor="middle">Y</text>
+    <text x="544" y="417">N</text>
+    <text x="1062" y="319" text-anchor="middle">rephrased</text>
+    <text x="747" y="437">no rephrase</text>
+    <text x="1079" y="433">rephrased</text>
+    <text x="960" y="616" text-anchor="end">modify</text>
+    <text x="1122" y="616">approve</text>
+    <text x="1240" y="677" text-anchor="middle">local</text>
+  </g>
+</svg>
